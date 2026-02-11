@@ -1,5 +1,6 @@
 const authmodel = require('../models/authmodel.js');
 const bcrypt = require('bcrypt');
+const jwt = require("jsonwebtoken");
 async function register(req,resp){
     try{
         const {email,password}=req.body;
@@ -22,7 +23,8 @@ async function login(req, res) {
     if (!match) {
       return res.status(400).json({ msg: "Invalid password" });
     }
-    res.json({ status: true, msg: "Login successful", user });
+    let jtoken=jwt.sign({email:req.body.email},process.env.SEC_KEY,{expiresIn:"10m"});
+    res.json({ status: true, msg: "Login successful"+"  JWT token:"+jtoken, user });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
