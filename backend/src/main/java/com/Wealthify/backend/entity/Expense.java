@@ -33,6 +33,16 @@ public class Expense {
     @JoinColumn(name = "category_id")
     private Category category;
 
+    // AI FIELDS
+    @Column(name = "ai_category_confidence")
+    private Double aiCategoryConfidence;
+
+    @Column(name = "is_flagged_wasteful")
+    private Boolean isFlaggedWasteful;
+
+    @Column(name = "ai_reason")
+    private String aiReason;
+
     @Column(name = "expense_date", nullable = false)
     private LocalDate expenseDate;
 
