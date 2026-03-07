@@ -9,6 +9,8 @@ import org.springframework.security.authentication.*;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
+
 @Service
 @RequiredArgsConstructor
 public class AuthService {
@@ -39,5 +41,13 @@ public class AuthService {
                 .orElseThrow(() -> new RuntimeException("User not found"));
         String token = jwtUtil.generateToken(user.getEmail());
         return new LoginResponse(token, user.getName(), user.getEmail());
+    }
+
+    public String updateIncome(String email, BigDecimal income) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+        user.setMonthlyIncome(income);
+        userRepository.save(user);
+        return "Monthly income updated to ₹" + income;
     }
 }
