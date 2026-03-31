@@ -115,7 +115,7 @@ public class StockAdvisorService {
         if (user.getMonthlyIncome() == null ||
                 user.getMonthlyIncome().compareTo(BigDecimal.ZERO) == 0) {
             throw new RuntimeException(
-                    "Please set your monthly income first via POST /api/user/income");
+                    "Please set your monthly income first via Budget Setup.");
         }
 
         LocalDate start = LocalDate.of(year, month, 1);
@@ -129,19 +129,28 @@ public class StockAdvisorService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         BigDecimal income = user.getMonthlyIncome();
-        BigDecimal surplus = income.subtract(totalExpenses);
 
-        // If surplus is negative, set to 0
-        if (surplus.compareTo(BigDecimal.ZERO) < 0) {
-            surplus = BigDecimal.ZERO;
-        }
+        // Use BUDGET SETUP values — not raw calculation
+        BigDecimal savePct = user.getSavingPercentage() != null
+                ? user.getSavingPercentage() : BigDecimal.valueOf(20);
+        BigDecimal investPct = user.getInvestmentPercentage() != null
+                ? user.getInvestmentPercentage() : BigDecimal.valueOf(30);
+
+        // Fixed monthly saving from budget
+        BigDecimal monthlySaving = income.multiply(savePct)
+                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+
+        // Fixed investment amount from budget (% of savings)
+        BigDecimal investmentAmount = monthlySaving.multiply(investPct)
+                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+
+        BigDecimal availableForExpense = income.subtract(monthlySaving);
 
         double savingsRate = income.compareTo(BigDecimal.ZERO) > 0
-                ? surplus.divide(income, 4, RoundingMode.HALF_UP)
+                ? monthlySaving.divide(income, 4, RoundingMode.HALF_UP)
                 .multiply(BigDecimal.valueOf(100)).doubleValue()
                 : 0.0;
 
-        // Spending pattern for AI context
         Map<String, BigDecimal> spendingPattern = expenses.stream()
                 .filter(e -> e.getCategory() != null)
                 .collect(Collectors.groupingBy(
@@ -151,16 +160,18 @@ public class StockAdvisorService {
                 ));
 
         List<StockRecommendationResponse.StockSuggestion> suggestions =
-                aiService.generateStockRecommendations(surplus, income, spendingPattern);
+                aiService.generateStockRecommendations(
+                        investmentAmount, income, spendingPattern);
 
-        String rationale = aiService.generateDailySummary(
-                surplus, spendingPattern, suggestions.size()
-        );
+        String rationale = aiService.generateBudgetAdvice(
+                income, totalExpenses, monthlySaving,
+                investmentAmount,
+                availableForExpense.subtract(totalExpenses));
 
         return StockRecommendationResponse.builder()
                 .monthlyIncome(income)
                 .totalMonthlyExpenses(totalExpenses)
-                .investableSurplus(surplus)
+                .investableSurplus(investmentAmount)  // ← budget investment amount
                 .savingsRate(savingsRate)
                 .recommendations(suggestions)
                 .aiRationale(rationale)

@@ -8,6 +8,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
@@ -26,15 +28,44 @@ public class ExpenseService {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
-        // Step 1: AI categorization
-        log.info("Calling AI to categorize: {}", request.getDescription());
+        // Step 1: Handle split expense
+        BigDecimal finalAmount = request.getAmount();
+        if (request.getSplitCount() != null && request.getSplitCount() > 1) {
+            finalAmount = request.getAmount()
+                    .divide(BigDecimal.valueOf(request.getSplitCount()),
+                            2, RoundingMode.HALF_UP);
+            log.info("Split expense: ₹{} / {} people = ₹{} per person",
+                    request.getAmount(), request.getSplitCount(), finalAmount);
+        }
+
+        // Step 2: Get monthly context for smarter AI decision
+        LocalDate start = LocalDate.of(LocalDate.now().getYear(),
+                LocalDate.now().getMonth(), 1);
+        List<Expense> thisMonthExpenses = expenseRepository
+                .findByUserAndExpenseDateBetweenOrderByExpenseDateDesc(
+                        user, start, LocalDate.now());
+        BigDecimal spentSoFar = thisMonthExpenses.stream()
+                .map(Expense::getAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal income = user.getMonthlyIncome() != null
+                ? user.getMonthlyIncome() : BigDecimal.ZERO;
+
+        // Step 3: AI categorization with full context
+        log.info("Calling AI to categorize: {} | amount: {} | income: {} | spentSoFar: {}",
+                request.getDescription(), finalAmount, income, spentSoFar);
+
         AiCategorizationResult aiResult = aiService.categorizeExpense(
-                request.getDescription(), request.getAmount()
+                request.getDescription(),
+                finalAmount,
+                income,
+                spentSoFar
         );
+
         log.info("AI Result: category={}, wasteful={}, confidence={}",
                 aiResult.getCategory(), aiResult.isWasteful(), aiResult.getConfidence());
 
-        // Step 2: Find category from DB (use AI result if no manual categoryId)
+        // Step 4: Find category from DB (use AI result if no manual categoryId)
         Category category = null;
         if (request.getCategoryId() != null) {
             category = categoryRepository.findById(request.getCategoryId()).orElse(null);
@@ -49,11 +80,11 @@ public class ExpenseService {
                     .orElse(null);
         }
 
-        // Step 3: Build and save expense with AI metadata
+        // Step 5: Build and save expense with AI metadata
         Expense expense = Expense.builder()
                 .user(user)
-                .amount(request.getAmount())
-                .description(request.getDescription())
+                .amount(finalAmount)
+                .description(buildDescription(request))
                 .category(category)
                 .aiCategoryConfidence(aiResult.getConfidence())
                 .isFlaggedWasteful(aiResult.isWasteful())
@@ -88,5 +119,15 @@ public class ExpenseService {
             throw new RuntimeException("Unauthorized");
         }
         expenseRepository.delete(expense);
+    }
+
+    // ─── Private Helpers ─────────────────────────────────────────────
+
+    private String buildDescription(ExpenseRequest request) {
+        if (request.getSplitCount() != null && request.getSplitCount() > 1) {
+            return request.getDescription()
+                    + " (split between " + request.getSplitCount() + " people)";
+        }
+        return request.getDescription();
     }
 }

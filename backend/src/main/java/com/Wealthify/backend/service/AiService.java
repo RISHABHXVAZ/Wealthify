@@ -12,6 +12,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
@@ -32,17 +34,21 @@ public class AiService {
     @Value("${groq.model}")
     private String model;
 
-    public AiCategorizationResult categorizeExpense(String description, BigDecimal amount) {
+    // ─── Updated: now accepts income + spentSoFar context ───────────
+    public AiCategorizationResult categorizeExpense(
+            String description,
+            BigDecimal amount,
+            BigDecimal monthlyIncome,
+            BigDecimal monthlySpentSoFar) {
         try {
-            String prompt = buildPrompt(description, amount);
+            String prompt = buildPrompt(description, amount, monthlyIncome, monthlySpentSoFar);
 
-            // Groq uses OpenAI-compatible format
             Map<String, Object> requestBody = Map.of(
                     "model", model,
                     "messages", List.of(
                             Map.of(
                                     "role", "system",
-                                    "content", "You are an expense categorizer. Always respond with valid JSON only. No markdown, no extra text."
+                                    "content", "You are an expense categorizer for Indian college students. Always respond with valid JSON only. No markdown, no extra text."
                             ),
                             Map.of(
                                     "role", "user",
@@ -72,38 +78,80 @@ public class AiService {
         }
     }
 
-    private String buildPrompt(String description, BigDecimal amount) {
+    private String buildPrompt(String description, BigDecimal amount,
+                               BigDecimal monthlyIncome, BigDecimal monthlySpentSoFar) {
+
+        // Calculate spending ratio for context
+        double spendingRatio = monthlyIncome.compareTo(BigDecimal.ZERO) > 0
+                ? amount.divide(monthlyIncome, 4, RoundingMode.HALF_UP)
+                .multiply(BigDecimal.valueOf(100)).doubleValue()
+                : 0.0;
+
+        double monthlySpentRatio = monthlyIncome.compareTo(BigDecimal.ZERO) > 0
+                ? monthlySpentSoFar.divide(monthlyIncome, 4, RoundingMode.HALF_UP)
+                .multiply(BigDecimal.valueOf(100)).doubleValue()
+                : 0.0;
+
         return """
-            Categorize this expense and respond ONLY with valid JSON, no extra text.
+            You are a strict expense analyzer for an Indian college student.
             
             Expense: "%s"
-            Amount: %s INR
+            Amount: ₹%s
+            Monthly income/allowance: ₹%s
+            Amount spent so far this month: ₹%s
+            This expense is %.1f%% of monthly income
+            Total spent this month so far: %.1f%% of monthly income
             
-            Available categories: Food, Transport, Housing, Healthcare, Utilities,
-            Entertainment, Shopping, Dining Out, Travel, Subscriptions,
-            Investments, Savings, Education, Miscellaneous
+            STRICT WASTEFUL RULES — follow these exactly:
             
-            Rules:
-            - type must be one of: NEED, WANT, INVESTMENT
-            - isWasteful is true only for unnecessary WANT expenses
-            - confidence is between 0.0 and 1.0
-            - reason should be one short sentence
+            ALWAYS WASTEFUL (no exceptions):
+            - This single expense is more than 20%% of monthly income → WASTEFUL
+            - Luxury dining (5-star, 7-star hotel restaurants) → WASTEFUL
+            - Alcohol, clubbing, partying → WASTEFUL
+            - Impulse gadget purchases → WASTEFUL
+            - Premium subscriptions not needed for studies → WASTEFUL
+            - Already spent more than 80%% of income this month → flag new WANTs as WASTEFUL
+            - Food delivery more than 3 times a week → WASTEFUL
+            - Designer clothing, luxury brands → WASTEFUL
             
-            Respond with exactly this JSON format:
+            NEVER WASTEFUL:
+            - Basic food (mess, canteen, normal restaurant once in a while)
+            - Transport (auto, bus, reasonable Uber)
+            - Haircut, basic grooming
+            - Books, courses, education
+            - Healthcare, medicines
+            - Utilities, rent
+            - Reasonable groceries
+            
+            EXAMPLES:
+            - ₹4500 dinner at 7-star hotel on ₹5000 income = WASTEFUL (90%% of income!)
+            - ₹600 haircut on ₹5000 income = NOT wasteful (necessity)
+            - ₹150 Swiggy order = NOT wasteful (occasional food delivery)
+            - ₹1500 night club on ₹5000 income = WASTEFUL (luxury + 30%% of income)
+            - ₹200 canteen lunch = NOT wasteful (basic food)
+            - ₹800 new shirt = borderline, check income ratio
+            
+            Available categories: Food, Transport, Housing, Healthcare,
+            Utilities, Entertainment, Shopping, Dining Out, Travel,
+            Subscriptions, Investments, Savings, Education,
+            Personal Care, Miscellaneous
+            
+            Respond ONLY with this exact JSON, no extra text:
             {
-              "category": "Food",
-              "type": "NEED",
-              "isWasteful": false,
+              "category": "Dining Out",
+              "type": "WANT",
+              "isWasteful": true,
               "confidence": 0.95,
-              "reason": "Basic food expense is a necessity"
+              "reason": "One sentence explanation mentioning the percentage of income"
             }
-            """.formatted(description, amount.toString());
+            """.formatted(
+                description, amount, monthlyIncome, monthlySpentSoFar,
+                spendingRatio, monthlySpentRatio);
     }
 
     private AiCategorizationResult parseGroqResponse(String responseBody) throws Exception {
         JsonNode root = objectMapper.readTree(responseBody);
 
-        // Groq/OpenAI response path: choices[0].message.content
         String content = root
                 .path("choices")
                 .get(0)
@@ -137,13 +185,13 @@ public class AiService {
                                        int wastefulCount) {
         try {
             String prompt = """
-            Give a one sentence friendly summary of today's spending.
-            Total spent: %s INR
-            Categories: %s
-            Wasteful transactions: %d
-            Keep it under 20 words, be direct and helpful.
-            Respond with plain text only, no JSON.
-            """.formatted(totalSpent, byCategory.toString(), wastefulCount);
+                    Give a one sentence friendly summary of today's spending.
+                    Total spent: %s INR
+                    Categories: %s
+                    Wasteful transactions: %d
+                    Keep it under 20 words, be direct and helpful.
+                    Respond with plain text only, no JSON.
+                    """.formatted(totalSpent, byCategory.toString(), wastefulCount);
 
             return callGroqForText(prompt);
         } catch (Exception e) {
@@ -157,12 +205,12 @@ public class AiService {
                                          Map<String, BigDecimal> byCategory) {
         try {
             String prompt = """
-            Give a 2 sentence summary of this month's spending habits.
-            Total spent: %s INR
-            Monthly income: %s INR
-            Top categories: %s
-            Be direct and insightful. Respond with plain text only, no JSON.
-            """.formatted(totalSpent, income, byCategory.toString());
+                    Give a 2 sentence summary of this month's spending habits.
+                    Total spent: %s INR
+                    Monthly income: %s INR
+                    Top categories: %s
+                    Be direct and insightful. Respond with plain text only, no JSON.
+                    """.formatted(totalSpent, income, byCategory.toString());
 
             return callGroqForText(prompt);
         } catch (Exception e) {
@@ -176,14 +224,14 @@ public class AiService {
                                              BigDecimal income) {
         try {
             String prompt = """
-            Give exactly 3 specific tips to reduce unnecessary spending.
-            Spending by category: %s
-            Wasteful amount: %s INR
-            Monthly income: %s INR
-            
-            Respond ONLY with a JSON array of 3 strings, no extra text:
-            ["tip 1", "tip 2", "tip 3"]
-            """.formatted(byCategory.toString(), wastefulAmount, income);
+                    Give exactly 3 specific tips to reduce unnecessary spending.
+                    Spending by category: %s
+                    Wasteful amount: %s INR
+                    Monthly income: %s INR
+                    
+                    Respond ONLY with a JSON array of 3 strings, no extra text:
+                    ["tip 1", "tip 2", "tip 3"]
+                    """.formatted(byCategory.toString(), wastefulAmount, income);
 
             String response = callGroqForText(prompt);
             response = response.trim();
@@ -192,7 +240,8 @@ public class AiService {
                         .replaceAll("```\\n?", "").trim();
             }
             return objectMapper.readValue(response,
-                    objectMapper.getTypeFactory().constructCollectionType(List.class, String.class));
+                    objectMapper.getTypeFactory()
+                            .constructCollectionType(List.class, String.class));
         } catch (Exception e) {
             log.error("Tips generation failed: {}", e.getMessage());
             return List.of(
@@ -231,14 +280,14 @@ public class AiService {
             BigDecimal income) {
         try {
             String prompt = """
-            A user has wasteful spending. Give exactly 4 specific actionable tips to reduce it.
-            Wasteful spending by category: %s
-            Total wasteful amount: %s INR
-            Monthly income: %s INR
-            
-            Respond ONLY with a JSON array of 4 strings, no extra text:
-            ["tip 1", "tip 2", "tip 3", "tip 4"]
-            """.formatted(wastefulByCategory.toString(), totalWasteful, income);
+                    A user has wasteful spending. Give exactly 4 specific actionable tips to reduce it.
+                    Wasteful spending by category: %s
+                    Total wasteful amount: %s INR
+                    Monthly income: %s INR
+                    
+                    Respond ONLY with a JSON array of 4 strings, no extra text:
+                    ["tip 1", "tip 2", "tip 3", "tip 4"]
+                    """.formatted(wastefulByCategory.toString(), totalWasteful, income);
 
             String response = callGroqForText(prompt);
             response = response.trim();
@@ -266,26 +315,26 @@ public class AiService {
             Map<String, BigDecimal> spendingPattern) {
         try {
             String prompt = """
-            Give 4 stock/ETF/mutual fund recommendations for an Indian investor.
-            Monthly investable surplus: %s INR
-            Monthly income: %s INR
-            Spending pattern: %s
-            
-            Consider risk appetite based on wasteful spending ratio.
-            Focus on Indian markets (NSE/BSE) and include index funds.
-            
-            Respond ONLY with a JSON array, no extra text:
-            [
-              {
-                "ticker": "NIFTY50",
-                "name": "Nifty 50 Index Fund",
-                "type": "MUTUAL_FUND",
-                "riskLevel": "LOW",
-                "reason": "Stable long-term growth",
-                "suggestedAllocation": "40%%"
-              }
-            ]
-            """.formatted(surplus, income, spendingPattern.toString());
+                    Give 4 stock/ETF/mutual fund recommendations for an Indian investor.
+                    Monthly investable surplus: %s INR
+                    Monthly income: %s INR
+                    Spending pattern: %s
+                    
+                    Consider risk appetite based on wasteful spending ratio.
+                    Focus on Indian markets (NSE/BSE) and include index funds.
+                    
+                    Respond ONLY with a JSON array, no extra text:
+                    [
+                      {
+                        "ticker": "NIFTY50",
+                        "name": "Nifty 50 Index Fund",
+                        "type": "MUTUAL_FUND",
+                        "riskLevel": "LOW",
+                        "reason": "Stable long-term growth",
+                        "suggestedAllocation": "40%%"
+                      }
+                    ]
+                    """.formatted(surplus, income, spendingPattern.toString());
 
             String response = callGroqForText(prompt);
             response = response.trim();
@@ -320,6 +369,73 @@ public class AiService {
                             .reason("Liquid emergency fund alternative with better returns than savings")
                             .suggestedAllocation("10%").build()
             );
+        }
+    }
+
+    public String generateGoalPlan(String itemName, BigDecimal targetAmount,
+                                   LocalDate targetDate, BigDecimal monthlyIncome,
+                                   BigDecimal savingPercentage,
+                                   Map<String, BigDecimal> spendingPattern,
+                                   BigDecimal avgMonthlyExpense) {
+        try {
+            long monthsRemaining = java.time.temporal.ChronoUnit.MONTHS.between(
+                    LocalDate.now(), targetDate);
+            BigDecimal availableForSaving = monthlyIncome
+                    .multiply(savingPercentage)
+                    .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+            BigDecimal requiredPerMonth = monthsRemaining > 0
+                    ? targetAmount.divide(BigDecimal.valueOf(monthsRemaining),
+                    2, RoundingMode.HALF_UP)
+                    : targetAmount;
+
+            String prompt = """
+                An Indian college student wants to buy: "%s"
+                Cost: ₹%s
+                Target date: %s (%d months from now)
+                Monthly income: ₹%s
+                Current saving capacity (%.0f%% of income): ₹%s/month
+                Average monthly expenses: ₹%s
+                Spending pattern: %s
+                Required saving per month for goal: ₹%s
+                
+                Analyze if this goal is achievable and give a specific actionable plan.
+                Consider their spending pattern and suggest exactly where to cut costs.
+                
+                Respond with a detailed but concise plan in plain text (3-4 sentences max).
+                Include: achievability, required monthly saving, specific spending cuts needed.
+                """.formatted(
+                    itemName, targetAmount, targetDate, monthsRemaining,
+                    monthlyIncome, savingPercentage.doubleValue(),
+                    availableForSaving, avgMonthlyExpense,
+                    spendingPattern.toString(), requiredPerMonth);
+
+            return callGroqForText(prompt);
+        } catch (Exception e) {
+            log.error("Goal plan generation failed: {}", e.getMessage());
+            return "Based on your income and expenses, create a dedicated savings plan for this goal.";
+        }
+    }
+
+    public String generateBudgetAdvice(BigDecimal income, BigDecimal spent,
+                                       BigDecimal savingAmount,
+                                       BigDecimal investmentAmount,
+                                       BigDecimal available) {
+        try {
+            String prompt = """
+                Give a 1-sentence budget health check for this Indian student.
+                Monthly income: ₹%s
+                Spent this month: ₹%s
+                Saving target: ₹%s/month
+                Investment target: ₹%s/month
+                Remaining budget for expenses: ₹%s
+                
+                Be direct and encouraging. Plain text only, no JSON.
+                """.formatted(income, spent, savingAmount, investmentAmount, available);
+
+            return callGroqForText(prompt);
+        } catch (Exception e) {
+            log.error("Budget advice failed: {}", e.getMessage());
+            return "Stay on track with your budget to meet your saving goals.";
         }
     }
 }

@@ -33,6 +33,12 @@ public class User {
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
+    @Column(name = "saving_percentage")
+    private BigDecimal savingPercentage;
+
+    @Column(name = "investment_percentage")
+    private BigDecimal investmentPercentage;
+
     @PrePersist
     public void prePersist() {
         this.createdAt = LocalDateTime.now();

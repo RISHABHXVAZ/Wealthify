@@ -2,7 +2,8 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
   LayoutDashboard, PlusCircle, BarChart2,
-  AlertTriangle, TrendingUp, LogOut
+  AlertTriangle, TrendingUp, LogOut,
+  PiggyBank, Target
 } from 'lucide-react';
 
 const Navbar = () => {
@@ -17,18 +18,20 @@ const Navbar = () => {
 
   const navItems = [
     { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { path: '/add-expense', label: 'Add Expense', icon: PlusCircle },
+    { path: '/add-expense', label: 'Add', icon: PlusCircle },
     { path: '/reports', label: 'Reports', icon: BarChart2 },
     { path: '/insights', label: 'Insights', icon: AlertTriangle },
+    { path: '/budget', label: 'Budget', icon: PiggyBank },
+    { path: '/goals', label: 'Goals', icon: Target },
     { path: '/stocks', label: 'Stocks', icon: TrendingUp },
   ];
 
   return (
-    <nav className="bg-gray-900 text-white shadow-lg">
+    <nav className="bg-gray-900 text-white shadow-lg border-b border-gray-800">
       <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <TrendingUp className="text-green-400" size={24} />
-          <span className="text-xl font-bold text-green-400">Wealthify</span>
+          <TrendingUp className="text-green-400" size={22} />
+          <span className="text-lg font-bold text-green-400">Wealthify</span>
         </div>
 
         <div className="flex items-center gap-1">
@@ -36,12 +39,12 @@ const Navbar = () => {
             <Link
               key={path}
               to={path}
-              className={`flex items-center gap-1 px-3 py-2 rounded-lg text-sm font-medium transition-all
+              className={`flex items-center gap-1 px-3 py-2 rounded-lg text-xs font-medium transition-all
                 ${location.pathname === path
                   ? 'bg-green-500 text-white'
                   : 'text-gray-300 hover:bg-gray-700'}`}
             >
-              <Icon size={16} />
+              <Icon size={14} />
               <span className="hidden md:inline">{label}</span>
             </Link>
           ))}

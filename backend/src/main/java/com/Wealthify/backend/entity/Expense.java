@@ -1,5 +1,6 @@
 package com.Wealthify.backend.entity;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 import lombok.*;
 import java.math.BigDecimal;
@@ -38,6 +39,7 @@ public class Expense {
     private Double aiCategoryConfidence;
 
     @Column(name = "is_flagged_wasteful")
+    @JsonProperty("isFlaggedWasteful")
     private Boolean isFlaggedWasteful;
 
     @Column(name = "ai_reason")
