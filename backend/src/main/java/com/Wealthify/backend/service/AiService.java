@@ -16,6 +16,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 @RequiredArgsConstructor
@@ -34,7 +35,51 @@ public class AiService {
     @Value("${groq.model}")
     private String model;
 
-    // ─── Updated: now accepts income + spentSoFar context ───────────
+    // ─── In-memory cache ────────────────────────────────────────────────────────
+    private final Map<String, String> summaryCache = new ConcurrentHashMap<>();
+    private final Map<String, Long> cacheTimestamps = new ConcurrentHashMap<>();
+    private static final long CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+    private String getCached(String key) {
+        Long ts = cacheTimestamps.get(key);
+        if (ts != null && System.currentTimeMillis() - ts < CACHE_TTL_MS) {
+            log.info("Cache hit for key: {}", key);
+            return summaryCache.get(key);
+        }
+        return null;
+    }
+
+    private void putCache(String key, String value) {
+        summaryCache.put(key, value);
+        cacheTimestamps.put(key, System.currentTimeMillis());
+        log.info("Cached response for key: {}", key);
+    }
+
+    // ─── Retry with exponential backoff ─────────────────────────────────────────
+    private String callGroqWithRetry(String prompt) throws Exception {
+        int maxRetries = 3;
+        Exception lastException = null;
+
+        for (int attempt = 0; attempt < maxRetries; attempt++) {
+            try {
+                return callGroqForText(prompt);
+            } catch (Exception e) {
+                lastException = e;
+                if (e.getMessage() != null && e.getMessage().contains("429")) {
+                    long waitMs = 2000L * (attempt + 1); // 2s, 4s, 6s
+                    log.warn("Rate limited (429). Attempt {}/{}. Waiting {}ms before retry...",
+                            attempt + 1, maxRetries, waitMs);
+                    Thread.sleep(waitMs);
+                } else {
+                    // Non-rate-limit error — don't retry
+                    throw e;
+                }
+            }
+        }
+        throw new RuntimeException("Groq API max retries exceeded", lastException);
+    }
+
+    // ─── Updated: now accepts income + spentSoFar context ───────────────────────
     public AiCategorizationResult categorizeExpense(
             String description,
             BigDecimal amount,
@@ -81,7 +126,6 @@ public class AiService {
     private String buildPrompt(String description, BigDecimal amount,
                                BigDecimal monthlyIncome, BigDecimal monthlySpentSoFar) {
 
-        // Calculate spending ratio for context
         double spendingRatio = monthlyIncome.compareTo(BigDecimal.ZERO) > 0
                 ? amount.divide(monthlyIncome, 4, RoundingMode.HALF_UP)
                 .multiply(BigDecimal.valueOf(100)).doubleValue()
@@ -183,6 +227,10 @@ public class AiService {
     public String generateDailySummary(BigDecimal totalSpent,
                                        Map<String, BigDecimal> byCategory,
                                        int wastefulCount) {
+        String cacheKey = "daily_summary_" + LocalDate.now() + "_" + totalSpent;
+        String cached = getCached(cacheKey);
+        if (cached != null) return cached;
+
         try {
             String prompt = """
                     Give a one sentence friendly summary of today's spending.
@@ -193,7 +241,9 @@ public class AiService {
                     Respond with plain text only, no JSON.
                     """.formatted(totalSpent, byCategory.toString(), wastefulCount);
 
-            return callGroqForText(prompt);
+            String result = callGroqWithRetry(prompt);
+            putCache(cacheKey, result);
+            return result;
         } catch (Exception e) {
             log.error("Daily summary generation failed: {}", e.getMessage());
             return "Spent ₹" + totalSpent + " today across " + byCategory.size() + " categories.";
@@ -203,6 +253,11 @@ public class AiService {
     public String generateMonthlySummary(BigDecimal totalSpent,
                                          BigDecimal income,
                                          Map<String, BigDecimal> byCategory) {
+        String cacheKey = "monthly_summary_" + LocalDate.now().getYear()
+                + "_" + LocalDate.now().getMonthValue() + "_" + totalSpent;
+        String cached = getCached(cacheKey);
+        if (cached != null) return cached;
+
         try {
             String prompt = """
                     Give a 2 sentence summary of this month's spending habits.
@@ -212,7 +267,9 @@ public class AiService {
                     Be direct and insightful. Respond with plain text only, no JSON.
                     """.formatted(totalSpent, income, byCategory.toString());
 
-            return callGroqForText(prompt);
+            String result = callGroqWithRetry(prompt);
+            putCache(cacheKey, result);
+            return result;
         } catch (Exception e) {
             log.error("Monthly summary generation failed: {}", e.getMessage());
             return "Total spending this month: ₹" + totalSpent;
@@ -222,6 +279,19 @@ public class AiService {
     public List<String> generateSpendingTips(Map<String, BigDecimal> byCategory,
                                              BigDecimal wastefulAmount,
                                              BigDecimal income) {
+        String cacheKey = "spending_tips_" + LocalDate.now().getYear()
+                + "_" + LocalDate.now().getMonthValue() + "_" + wastefulAmount;
+        String cached = getCached(cacheKey);
+        if (cached != null) {
+            try {
+                return objectMapper.readValue(cached,
+                        objectMapper.getTypeFactory()
+                                .constructCollectionType(List.class, String.class));
+            } catch (Exception e) {
+                log.warn("Failed to deserialize cached tips, regenerating...");
+            }
+        }
+
         try {
             String prompt = """
                     Give exactly 3 specific tips to reduce unnecessary spending.
@@ -233,12 +303,14 @@ public class AiService {
                     ["tip 1", "tip 2", "tip 3"]
                     """.formatted(byCategory.toString(), wastefulAmount, income);
 
-            String response = callGroqForText(prompt);
+            String response = callGroqWithRetry(prompt);
             response = response.trim();
             if (response.startsWith("```")) {
                 response = response.replaceAll("```json\\n?", "")
                         .replaceAll("```\\n?", "").trim();
             }
+
+            putCache(cacheKey, response);
             return objectMapper.readValue(response,
                     objectMapper.getTypeFactory()
                             .constructCollectionType(List.class, String.class));
@@ -278,6 +350,19 @@ public class AiService {
             Map<String, BigDecimal> wastefulByCategory,
             BigDecimal totalWasteful,
             BigDecimal income) {
+        String cacheKey = "wasteful_recs_" + LocalDate.now().getYear()
+                + "_" + LocalDate.now().getMonthValue() + "_" + totalWasteful;
+        String cached = getCached(cacheKey);
+        if (cached != null) {
+            try {
+                return objectMapper.readValue(cached,
+                        objectMapper.getTypeFactory()
+                                .constructCollectionType(List.class, String.class));
+            } catch (Exception e) {
+                log.warn("Failed to deserialize cached wasteful recs, regenerating...");
+            }
+        }
+
         try {
             String prompt = """
                     A user has wasteful spending. Give exactly 4 specific actionable tips to reduce it.
@@ -289,12 +374,14 @@ public class AiService {
                     ["tip 1", "tip 2", "tip 3", "tip 4"]
                     """.formatted(wastefulByCategory.toString(), totalWasteful, income);
 
-            String response = callGroqForText(prompt);
+            String response = callGroqWithRetry(prompt);
             response = response.trim();
             if (response.startsWith("```")) {
                 response = response.replaceAll("```json\\n?", "")
                         .replaceAll("```\\n?", "").trim();
             }
+
+            putCache(cacheKey, response);
             return objectMapper.readValue(response,
                     objectMapper.getTypeFactory()
                             .constructCollectionType(List.class, String.class));
@@ -313,6 +400,19 @@ public class AiService {
             BigDecimal surplus,
             BigDecimal income,
             Map<String, BigDecimal> spendingPattern) {
+        String cacheKey = "stock_recs_" + LocalDate.now().getYear()
+                + "_" + LocalDate.now().getMonthValue() + "_" + surplus;
+        String cached = getCached(cacheKey);
+        if (cached != null) {
+            try {
+                return objectMapper.readValue(cached,
+                        objectMapper.getTypeFactory().constructCollectionType(
+                                List.class, StockRecommendationResponse.StockSuggestion.class));
+            } catch (Exception e) {
+                log.warn("Failed to deserialize cached stock recs, regenerating...");
+            }
+        }
+
         try {
             String prompt = """
                     Give 4 stock/ETF/mutual fund recommendations for an Indian investor.
@@ -336,12 +436,14 @@ public class AiService {
                     ]
                     """.formatted(surplus, income, spendingPattern.toString());
 
-            String response = callGroqForText(prompt);
+            String response = callGroqWithRetry(prompt);
             response = response.trim();
             if (response.startsWith("```")) {
                 response = response.replaceAll("```json\\n?", "")
                         .replaceAll("```\\n?", "").trim();
             }
+
+            putCache(cacheKey, response);
             return objectMapper.readValue(response,
                     objectMapper.getTypeFactory().constructCollectionType(
                             List.class, StockRecommendationResponse.StockSuggestion.class));
@@ -377,6 +479,11 @@ public class AiService {
                                    BigDecimal savingPercentage,
                                    Map<String, BigDecimal> spendingPattern,
                                    BigDecimal avgMonthlyExpense) {
+        String cacheKey = "goal_plan_" + itemName.replaceAll("\\s+", "_")
+                + "_" + targetAmount + "_" + targetDate;
+        String cached = getCached(cacheKey);
+        if (cached != null) return cached;
+
         try {
             long monthsRemaining = java.time.temporal.ChronoUnit.MONTHS.between(
                     LocalDate.now(), targetDate);
@@ -409,7 +516,9 @@ public class AiService {
                     availableForSaving, avgMonthlyExpense,
                     spendingPattern.toString(), requiredPerMonth);
 
-            return callGroqForText(prompt);
+            String result = callGroqWithRetry(prompt);
+            putCache(cacheKey, result);
+            return result;
         } catch (Exception e) {
             log.error("Goal plan generation failed: {}", e.getMessage());
             return "Based on your income and expenses, create a dedicated savings plan for this goal.";
@@ -420,6 +529,11 @@ public class AiService {
                                        BigDecimal savingAmount,
                                        BigDecimal investmentAmount,
                                        BigDecimal available) {
+        String cacheKey = "budget_advice_" + LocalDate.now().getYear()
+                + "_" + LocalDate.now().getMonthValue() + "_" + spent;
+        String cached = getCached(cacheKey);
+        if (cached != null) return cached;
+
         try {
             String prompt = """
                 Give a 1-sentence budget health check for this Indian student.
@@ -432,7 +546,9 @@ public class AiService {
                 Be direct and encouraging. Plain text only, no JSON.
                 """.formatted(income, spent, savingAmount, investmentAmount, available);
 
-            return callGroqForText(prompt);
+            String result = callGroqWithRetry(prompt);
+            putCache(cacheKey, result);
+            return result;
         } catch (Exception e) {
             log.error("Budget advice failed: {}", e.getMessage());
             return "Stay on track with your budget to meet your saving goals.";
