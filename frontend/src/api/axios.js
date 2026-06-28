@@ -1,7 +1,8 @@
 import axios from 'axios';
 
 const API = axios.create({
-  baseURL: 'http://localhost:8080',
+  // Uses your Vercel URL in production, or falls back to localhost during local testing
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8080',
 });
 
 API.interceptors.request.use((config) => {
