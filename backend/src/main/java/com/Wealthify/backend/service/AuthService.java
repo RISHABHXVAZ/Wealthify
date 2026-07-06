@@ -7,15 +7,14 @@ import com.Wealthify.backend.security.JwtUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.*;
+import org.springframework.mail.SimpleMailMessage;
+import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.security.authentication.*;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.Map;
 import java.util.Random;
 
 @Service
@@ -27,10 +26,10 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
     private final AuthenticationManager authenticationManager;
-    private final RestTemplate restTemplate = new RestTemplate();
+    private final JavaMailSender mailSender; // Injects the Gmail SMTP configurations cleanly
 
-    @Value("${resend.api.key}")
-    private String resendApiKey;
+    @Value("${spring.mail.username}")
+    private String senderEmail;
 
     public String register(RegisterRequest request) {
         if (userRepository.existsByEmail(request.getEmail())) {
@@ -62,33 +61,24 @@ public class AuthService {
             return;
         }
 
-        // Generate a secure 6-digit OTP string
+        // Generate 6-digit OTP
         String otp = String.format("%06d", new Random().nextInt(1000000));
 
-        user.setResetToken(otp); // Reusing token column safely for OTP storage
-        user.setResetTokenExpiry(LocalDateTime.now().plusMinutes(5)); // OTPs valid for 5 mins
+        user.setResetToken(otp);
+        user.setResetTokenExpiry(LocalDateTime.now().plusMinutes(5));
         userRepository.save(user);
 
-        String url = "https://api.resend.com/emails";
-
-        Map<String, Object> requestBody = Map.of(
-                "from", "onboarding@resend.dev",
-                "to", user.getEmail(),
-                "subject", "Wealthify - Password Reset OTP",
-                "text", "Your One-Time Password (OTP) for resetting your Wealthify password is: " + otp + "\n\nThis OTP is secure and valid for 5 minutes."
-        );
-
         try {
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.setBearerAuth(resendApiKey);
+            SimpleMailMessage message = new SimpleMailMessage();
+            message.setFrom(senderEmail);
+            message.setTo(user.getEmail()); // Sends to any user safely
+            message.setSubject("Wealthify - Password Reset OTP");
+            message.setText("Your One-Time Password (OTP) for resetting your Wealthify password is: " + otp + "\n\nThis OTP is secure and valid for 5 minutes.");
 
-            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
-            ResponseEntity<String> response = restTemplate.postForEntity(url, entity, String.class);
-
-            log.info("Resend API response status: {}", response.getStatusCode());
+            mailSender.send(message);
+            log.info("OTP verification email dispatched cleanly via Gmail SMTP server.");
         } catch (Exception e) {
-            log.error("Failed to send verification OTP via Resend API: {}", e.getMessage());
+            log.error("Failed to send email via Gmail SMTP: {}", e.getMessage());
             throw new RuntimeException("Failed to dispatch password verification email.");
         }
     }
