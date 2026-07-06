@@ -2,6 +2,7 @@ package com.Wealthify.backend.config;
 
 import com.Wealthify.backend.security.JwtFilter;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -19,15 +20,17 @@ public class SecurityConfig {
 
     private final JwtFilter jwtFilter;
 
+    @Value("${app.frontend.url}")
+    private String frontendUrl;
+
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
                 .cors(cors -> cors.configurationSource(request -> {
                     var config = new org.springframework.web.cors.CorsConfiguration();
-                    // ALLOW BOTH LOCALHOST AND VERCEL PRODUCTION DOMAINS
                     config.setAllowedOrigins(java.util.List.of(
                             "http://localhost:5173",
-                            "https://wealthify-frontend.vercel.app"
+                            frontendUrl
                     ));
                     config.setAllowedMethods(java.util.List.of("GET","POST","PUT","DELETE","OPTIONS"));
                     config.setAllowedHeaders(java.util.List.of("*"));

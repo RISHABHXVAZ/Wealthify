@@ -27,6 +27,12 @@ public class User {
     @Column(nullable = false)
     private String password;
 
+    @Column(name = "reset_token")
+    private String resetToken;
+
+    @Column(name = "reset_token_expiry")
+    private LocalDateTime resetTokenExpiry;
+
     @Column(name = "monthly_income")
     private BigDecimal monthlyIncome;
 

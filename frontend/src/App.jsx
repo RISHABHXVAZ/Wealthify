@@ -9,6 +9,7 @@ import Reports from './pages/Reports';
 import Insights from './pages/Insights';
 import StockAdvisor from './pages/StockAdvisor';
 import Budget from './pages/Budget';
+import ResetPassword from './pages/ResetPassword';
 import Goals from './pages/Goals';
 
 const Layout = ({ children }) => (
@@ -46,6 +47,8 @@ function App() {
         <Route path="/stocks" element={
           <ProtectedRoute><Layout><StockAdvisor /></Layout></ProtectedRoute>
         } />
+
+        <Route path="/reset-password" element={<ResetPassword />} />
       </Routes>
     </BrowserRouter>
   );
