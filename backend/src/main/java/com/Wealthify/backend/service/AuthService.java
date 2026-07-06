@@ -16,7 +16,7 @@ import org.springframework.web.client.RestTemplate;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Map;
-import java.util.List;
+import java.util.Random;
 
 @Service
 @RequiredArgsConstructor
@@ -27,10 +27,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
     private final AuthenticationManager authenticationManager;
-    private final RestTemplate restTemplate = new RestTemplate(); // Built-in HTTP client
-
-    @Value("${app.frontend.url}")
-    private String frontendUrl;
+    private final RestTemplate restTemplate = new RestTemplate();
 
     @Value("${resend.api.key}")
     private String resendApiKey;
@@ -65,21 +62,20 @@ public class AuthService {
             return;
         }
 
-        String token = java.util.UUID.randomUUID().toString();
-        user.setResetToken(token);
-        user.setResetTokenExpiry(LocalDateTime.now().plusMinutes(15));
+        // Generate a secure 6-digit OTP string
+        String otp = String.format("%06d", new Random().nextInt(1000000));
+
+        user.setResetToken(otp); // Reusing token column safely for OTP storage
+        user.setResetTokenExpiry(LocalDateTime.now().plusMinutes(5)); // OTPs valid for 5 mins
         userRepository.save(user);
 
-        String resetUrl = frontendUrl + "/reset-password?token=" + token;
-
-        // Construct the HTTP call payload for Resend API over standard Port 443
         String url = "https://api.resend.com/emails";
 
         Map<String, Object> requestBody = Map.of(
-                "from", "onboarding@resend.dev", // Resend provides this default verified address for free accounts
+                "from", "onboarding@resend.dev",
                 "to", user.getEmail(),
-                "subject", "Wealthify - Reset Your Password",
-                "text", "Click the link below to securely reset your password. It is valid for 15 minutes:\n\n" + resetUrl
+                "subject", "Wealthify - Password Reset OTP",
+                "text", "Your One-Time Password (OTP) for resetting your Wealthify password is: " + otp + "\n\nThis OTP is secure and valid for 5 minutes."
         );
 
         try {
@@ -92,17 +88,21 @@ public class AuthService {
 
             log.info("Resend API response status: {}", response.getStatusCode());
         } catch (Exception e) {
-            log.error("Failed to send transactional email via Resend API: {}", e.getMessage());
-            throw new RuntimeException("Failed to dispatch password email.");
+            log.error("Failed to send verification OTP via Resend API: {}", e.getMessage());
+            throw new RuntimeException("Failed to dispatch password verification email.");
         }
     }
 
-    public String updatePasswordWithToken(String token, String newPassword) {
-        User user = userRepository.findByResetToken(token)
-                .orElseThrow(() -> new RuntimeException("Invalid or expired password reset token."));
+    public String verifyOtpAndResetPassword(String email, String otp, String newPassword) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("Account with this email not found."));
+
+        if (user.getResetToken() == null || !user.getResetToken().equals(otp)) {
+            throw new RuntimeException("The verification OTP code is invalid.");
+        }
 
         if (user.getResetTokenExpiry().isBefore(LocalDateTime.now())) {
-            throw new RuntimeException("Token has expired.");
+            throw new RuntimeException("This verification OTP has expired.");
         }
 
         user.setPassword(passwordEncoder.encode(newPassword));

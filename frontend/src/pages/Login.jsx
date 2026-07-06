@@ -40,9 +40,13 @@ const Login = () => {
     setSuccess('');
     try {
       const res = await API.post('/api/auth/forgot-password', { email: forgotEmail });
-      setSuccess(res.data.message);
+      setSuccess(res.data.message + " Redirecting to verification page...");
+      // Seamlessly pass along email to the validation form view via query string parameters
+      setTimeout(() => {
+        navigate(`/reset-password?email=${encodeURIComponent(forgotEmail)}`);
+      }, 2000);
     } catch (err) {
-      setError('Something went wrong. Please check your network connection.');
+      setError(err.response?.data?.message || 'Something went wrong. Please check your connection.');
     } finally {
       setLoading(false);
     }
@@ -131,7 +135,7 @@ const Login = () => {
             <>
               <h2 className="text-xl font-semibold text-white mb-2">Reset Password</h2>
               <p className="text-xs text-gray-400 mb-6">
-                Enter your account email. If valid, we will email you a secure confirmation recovery link.
+                Enter your account email. If valid, we will send a 6-digit code to securely verify your identity.
               </p>
 
               {error && <div className="bg-red-500/10 border border-red-500/30 text-red-400 rounded-lg px-4 py-3 mb-4 text-sm">{error}</div>}
@@ -158,7 +162,7 @@ const Login = () => {
                   className="w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-2.5 rounded-lg transition-all flex items-center justify-center gap-2"
                 >
                   {loading ? <Loader size={16} className="animate-spin" /> : null}
-                  {loading ? 'Sending link...' : 'Send Recovery Email'}
+                  {loading ? 'Sending OTP...' : 'Send Verification OTP'}
                 </button>
               </form>
 

@@ -29,12 +29,16 @@ public class AuthController {
     @PostMapping("/forgot-password")
     public ResponseEntity<Map<String, String>> forgotPassword(@RequestBody Map<String, String> request) {
         authService.processForgotPassword(request.get("email"));
-        return ResponseEntity.ok(Map.of("message", "If the account exists, a secure link has been sent to your inbox."));
+        return ResponseEntity.ok(Map.of("message", "If the account exists, a secure OTP code has been sent to your inbox."));
     }
 
     @PostMapping("/reset-password")
     public ResponseEntity<Map<String, String>> resetPassword(@RequestBody Map<String, String> request) {
-        String msg = authService.updatePasswordWithToken(request.get("token"), request.get("newPassword"));
+        String msg = authService.verifyOtpAndResetPassword(
+                request.get("email"),
+                request.get("otp"),
+                request.get("newPassword")
+        );
         return ResponseEntity.ok(Map.of("message", msg));
     }
 }
