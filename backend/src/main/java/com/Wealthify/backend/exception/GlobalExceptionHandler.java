@@ -39,7 +39,8 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<Map<String, String>> handleRuntimeException(RuntimeException ex) {
         log.error("Request failed: {}", ex.getMessage(), ex);
-        return ResponseEntity.badRequest().body(Map.of("message", ex.getMessage()));
+        String message = ex.getMessage() != null ? ex.getMessage() : "Something went wrong. Please try again.";
+        return ResponseEntity.badRequest().body(Map.of("message", message));
     }
 
     @ExceptionHandler(Exception.class)
