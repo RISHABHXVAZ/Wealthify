@@ -28,9 +28,15 @@ public class SecurityConfig {
         http
                 .cors(cors -> cors.configurationSource(request -> {
                     var config = new org.springframework.web.cors.CorsConfiguration();
+                    // Strip a trailing slash so a small env-var typo (e.g.
+                    // "https://wealthify-frontend.vercel.app/") doesn't
+                    // silently break CORS for the whole frontend.
+                    String normalizedFrontendUrl = frontendUrl != null
+                            ? frontendUrl.replaceAll("/+$", "")
+                            : frontendUrl;
                     config.setAllowedOrigins(java.util.List.of(
                             "http://localhost:5173",
-                            frontendUrl
+                            normalizedFrontendUrl
                     ));
                     config.setAllowedMethods(java.util.List.of("GET","POST","PUT","DELETE","OPTIONS"));
                     config.setAllowedHeaders(java.util.List.of("*"));
