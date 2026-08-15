@@ -84,7 +84,7 @@ const Login = () => {
                       value={form.email}
                       onChange={e => setForm({ ...form, email: e.target.value })}
                       className="w-full bg-gray-800 text-white rounded-lg pl-9 pr-4 py-2.5 border border-gray-700 focus:border-green-500 focus:outline-none text-sm"
-                      placeholder="you@example.com"
+                      placeholder="Enter your email"
                       required
                     />
                   </div>
@@ -108,7 +108,7 @@ const Login = () => {
                       value={form.password}
                       onChange={e => setForm({ ...form, password: e.target.value })}
                       className="w-full bg-gray-800 text-white rounded-lg pl-9 pr-10 py-2.5 border border-gray-700 focus:border-green-500 focus:outline-none text-sm"
-                      placeholder="••••••••"
+                      placeholder="Enter your password"
                       required
                     />
                     <button
@@ -151,7 +151,7 @@ const Login = () => {
                       value={forgotEmail}
                       onChange={e => setForgotEmail(e.target.value)}
                       className="w-full bg-gray-800 text-white rounded-lg pl-9 pr-4 py-2.5 border border-gray-700 focus:border-green-500 focus:outline-none text-sm"
-                      placeholder="you@example.com"
+                      placeholder="Enter your email"
                       required
                     />
                   </div>
