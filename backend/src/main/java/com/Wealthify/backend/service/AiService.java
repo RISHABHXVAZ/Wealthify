@@ -105,7 +105,8 @@ public class AiService {
                             )
                     ),
                     "temperature", 0.1,
-                    "max_tokens", 300
+                    "reasoning_effort", "low",
+                    "max_completion_tokens", 1024
             );
 
             HttpHeaders headers = new HttpHeaders();
@@ -330,7 +331,8 @@ public class AiService {
                         Map.of("role", "user", "content", prompt)
                 ),
                 "temperature", 0.3,
-                "max_tokens", 300
+                "reasoning_effort", "low",
+                "max_completion_tokens", 1024
         );
 
         HttpHeaders headers = new HttpHeaders();
