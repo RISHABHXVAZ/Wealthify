@@ -54,7 +54,7 @@ const Register = () => {
                   value={form.name}
                   onChange={e => setForm({ ...form, name: e.target.value })}
                   className="w-full bg-gray-800 text-white rounded-lg pl-9 pr-4 py-2.5 border border-gray-700 focus:border-green-500 focus:outline-none text-sm"
-                  placeholder="Rishabh Srivastava"
+                  placeholder="Enter your Name"
                   required
                 />
               </div>
@@ -69,7 +69,7 @@ const Register = () => {
                   value={form.email}
                   onChange={e => setForm({ ...form, email: e.target.value })}
                   className="w-full bg-gray-800 text-white rounded-lg pl-9 pr-4 py-2.5 border border-gray-700 focus:border-green-500 focus:outline-none text-sm"
-                  placeholder="you@example.com"
+                  placeholder="Enter your email"
                   required
                 />
               </div>
@@ -84,7 +84,7 @@ const Register = () => {
                   value={form.password}
                   onChange={e => setForm({ ...form, password: e.target.value })}
                   className="w-full bg-gray-800 text-white rounded-lg pl-9 pr-10 py-2.5 border border-gray-700 focus:border-green-500 focus:outline-none text-sm"
-                  placeholder="••••••••"
+                  placeholder="Set your password"
                   required
                 />
                 <button
