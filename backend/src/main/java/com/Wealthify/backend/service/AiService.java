@@ -80,17 +80,34 @@ public class AiService {
     }
 
     public AiCategorizationResult categorizeExpense(String description) {
-        return categorizeExpense(description, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
+        return categorizeExpense(description, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
     }
 
-    // ─── Categorization with robust fallback parsing ────────────────────────────
     public AiCategorizationResult categorizeExpense(
             String description,
             BigDecimal amount,
             BigDecimal monthlyIncome,
             BigDecimal monthlySpentSoFar) {
+        BigDecimal remainingBudget = (monthlyIncome != null && monthlySpentSoFar != null)
+                ? monthlyIncome.subtract(monthlySpentSoFar)
+                : BigDecimal.ZERO;
+        return categorizeExpense(description, amount, monthlyIncome, monthlySpentSoFar, remainingBudget);
+    }
+
+    // ─── Categorization based on Remaining Budget ───────────────────────────────
+    public AiCategorizationResult categorizeExpense(
+            String description,
+            BigDecimal amount,
+            BigDecimal monthlyIncome,
+            BigDecimal monthlySpentSoFar,
+            BigDecimal remainingBudget) {
         try {
-            String prompt = buildPrompt(description, amount, monthlyIncome, monthlySpentSoFar);
+            amount = amount != null ? amount : BigDecimal.ZERO;
+            monthlyIncome = monthlyIncome != null ? monthlyIncome : BigDecimal.ZERO;
+            monthlySpentSoFar = monthlySpentSoFar != null ? monthlySpentSoFar : BigDecimal.ZERO;
+            remainingBudget = remainingBudget != null ? remainingBudget : BigDecimal.ZERO;
+
+            String prompt = buildPrompt(description, amount, monthlyIncome, monthlySpentSoFar, remainingBudget);
 
             Map<String, Object> requestBody = Map.of(
                     "model", model,
@@ -129,15 +146,11 @@ public class AiService {
     }
 
     private String buildPrompt(String description, BigDecimal amount,
-                               BigDecimal monthlyIncome, BigDecimal monthlySpentSoFar) {
+                               BigDecimal monthlyIncome, BigDecimal monthlySpentSoFar,
+                               BigDecimal remainingBudget) {
 
-        double spendingRatio = monthlyIncome != null && monthlyIncome.compareTo(BigDecimal.ZERO) > 0
-                ? amount.divide(monthlyIncome, 4, RoundingMode.HALF_UP)
-                .multiply(BigDecimal.valueOf(100)).doubleValue()
-                : 0.0;
-
-        double monthlySpentRatio = monthlyIncome != null && monthlyIncome.compareTo(BigDecimal.ZERO) > 0
-                ? monthlySpentSoFar.divide(monthlyIncome, 4, RoundingMode.HALF_UP)
+        double remainingBudgetRatio = remainingBudget.compareTo(BigDecimal.ZERO) > 0
+                ? amount.divide(remainingBudget, 4, RoundingMode.HALF_UP)
                 .multiply(BigDecimal.valueOf(100)).doubleValue()
                 : 0.0;
 
@@ -148,18 +161,18 @@ public class AiService {
             Amount: ₹%s
             Monthly income/allowance: ₹%s
             Amount spent so far this month: ₹%s
-            This expense is %.1f%% of monthly income
-            Total spent this month so far: %.1f%% of monthly income
+            Remaining budget: ₹%s
+            This expense is %.1f%% of your remaining budget
             
             STRICT WASTEFUL RULES — follow these exactly:
             
             ALWAYS WASTEFUL (no exceptions):
-            - This single expense is more than 20%% of monthly income → WASTEFUL
+            - This single expense is more than 20%% of remaining budget → WASTEFUL
             - Luxury dining (5-star, 7-star hotel restaurants) → WASTEFUL
             - Alcohol, clubbing, partying → WASTEFUL
             - Impulse gadget purchases → WASTEFUL
             - Premium subscriptions not needed for studies → WASTEFUL
-            - Already spent more than 80%% of income this month → flag new WANTs as WASTEFUL
+            - Remaining budget is critically low (< 20%% of monthly income left) → flag new WANTs as WASTEFUL
             - Food delivery more than 3 times a week → WASTEFUL
             - Designer clothing, luxury brands → WASTEFUL
             
@@ -183,11 +196,11 @@ public class AiService {
               "type": "WANT",
               "isWasteful": true,
               "confidence": 0.95,
-              "reason": "One sentence explanation mentioning the percentage of income"
+              "reason": "One sentence explanation mentioning the percentage of remaining budget"
             }
             """.formatted(
                 description, amount, monthlyIncome, monthlySpentSoFar,
-                spendingRatio, monthlySpentRatio);
+                remainingBudget, remainingBudgetRatio);
     }
 
     private AiCategorizationResult parseGroqResponse(String responseBody) throws Exception {
@@ -201,7 +214,6 @@ public class AiService {
                 .asText();
 
         content = content.trim();
-        // Aggressively clean markdown blocks if the LLM includes them despite instructions
         if (content.contains("```")) {
             content = content.replaceAll("(?s)```json\\s*", "")
                     .replaceAll("(?s)```\\s*", "")
@@ -209,8 +221,6 @@ public class AiService {
         }
 
         log.info("Groq parsed content string: {}", content);
-
-        // Direct mapping into the DTO
         return objectMapper.readValue(content, AiCategorizationResult.class);
     }
 
