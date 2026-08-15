@@ -79,7 +79,7 @@ public class ExpenseService {
         if (category == null) {
             category = resolveCategory(aiResult.getCategory());
         }
-        
+
 
         // Step 5: Build and save expense with AI metadata
         Expense expense = Expense.builder()

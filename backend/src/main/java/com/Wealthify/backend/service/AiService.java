@@ -79,7 +79,11 @@ public class AiService {
         throw new RuntimeException("Groq API max retries exceeded", lastException);
     }
 
-    // ─── Updated: now accepts income + spentSoFar context ───────────────────────
+    public AiCategorizationResult categorizeExpense(String description) {
+        return categorizeExpense(description, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
+    }
+
+    // ─── Categorization with robust fallback parsing ────────────────────────────
     public AiCategorizationResult categorizeExpense(
             String description,
             BigDecimal amount,
@@ -118,7 +122,7 @@ public class AiService {
             return parseGroqResponse(response.getBody());
 
         } catch (Exception e) {
-            log.error("AI categorization failed: {}", e.getMessage());
+            log.error("AI categorization failed: {}", e.getMessage(), e);
             return getDefaultResult();
         }
     }
@@ -126,12 +130,12 @@ public class AiService {
     private String buildPrompt(String description, BigDecimal amount,
                                BigDecimal monthlyIncome, BigDecimal monthlySpentSoFar) {
 
-        double spendingRatio = monthlyIncome.compareTo(BigDecimal.ZERO) > 0
+        double spendingRatio = monthlyIncome != null && monthlyIncome.compareTo(BigDecimal.ZERO) > 0
                 ? amount.divide(monthlyIncome, 4, RoundingMode.HALF_UP)
                 .multiply(BigDecimal.valueOf(100)).doubleValue()
                 : 0.0;
 
-        double monthlySpentRatio = monthlyIncome.compareTo(BigDecimal.ZERO) > 0
+        double monthlySpentRatio = monthlyIncome != null && monthlyIncome.compareTo(BigDecimal.ZERO) > 0
                 ? monthlySpentSoFar.divide(monthlyIncome, 4, RoundingMode.HALF_UP)
                 .multiply(BigDecimal.valueOf(100)).doubleValue()
                 : 0.0;
@@ -167,20 +171,12 @@ public class AiService {
             - Utilities, rent
             - Reasonable groceries
             
-            EXAMPLES:
-            - ₹4500 dinner at 7-star hotel on ₹5000 income = WASTEFUL (90%% of income!)
-            - ₹600 haircut on ₹5000 income = NOT wasteful (necessity)
-            - ₹150 Swiggy order = NOT wasteful (occasional food delivery)
-            - ₹1500 night club on ₹5000 income = WASTEFUL (luxury + 30%% of income)
-            - ₹200 canteen lunch = NOT wasteful (basic food)
-            - ₹800 new shirt = borderline, check income ratio
-            
             Available categories: Food, Transport, Housing, Healthcare,
             Utilities, Entertainment, Shopping, Dining Out, Travel,
             Subscriptions, Investments, Savings, Education,
             Personal Care, Miscellaneous
             
-            Respond ONLY with this exact JSON, no extra text:
+            Respond ONLY with this exact JSON schema, no extra text, no markdown code blocks:
             {
               "category": "Dining Out",
               "type": "WANT",
@@ -204,13 +200,16 @@ public class AiService {
                 .asText();
 
         content = content.trim();
-        if (content.startsWith("```")) {
-            content = content.replaceAll("```json\\n?", "")
-                    .replaceAll("```\\n?", "")
+        // Aggressively clean markdown blocks if the LLM includes them despite instructions
+        if (content.contains("```")) {
+            content = content.replaceAll("(?s)```json\\s*", "")
+                    .replaceAll("(?s)```\\s*", "")
                     .trim();
         }
 
-        log.info("Groq parsed content: {}", content);
+        log.info("Groq parsed content string: {}", content);
+
+        // Direct mapping into the DTO
         return objectMapper.readValue(content, AiCategorizationResult.class);
     }
 
@@ -305,9 +304,9 @@ public class AiService {
 
             String response = callGroqWithRetry(prompt);
             response = response.trim();
-            if (response.startsWith("```")) {
-                response = response.replaceAll("```json\\n?", "")
-                        .replaceAll("```\\n?", "").trim();
+            if (response.contains("```")) {
+                response = response.replaceAll("(?s)```json\\s*", "")
+                        .replaceAll("(?s)```\\s*", "").trim();
             }
 
             putCache(cacheKey, response);
@@ -376,9 +375,9 @@ public class AiService {
 
             String response = callGroqWithRetry(prompt);
             response = response.trim();
-            if (response.startsWith("```")) {
-                response = response.replaceAll("```json\\n?", "")
-                        .replaceAll("```\\n?", "").trim();
+            if (response.contains("```")) {
+                response = response.replaceAll("(?s)```json\\s*", "")
+                        .replaceAll("(?s)```\\s*", "").trim();
             }
 
             putCache(cacheKey, response);
@@ -438,9 +437,9 @@ public class AiService {
 
             String response = callGroqWithRetry(prompt);
             response = response.trim();
-            if (response.startsWith("```")) {
-                response = response.replaceAll("```json\\n?", "")
-                        .replaceAll("```\\n?", "").trim();
+            if (response.contains("```")) {
+                response = response.replaceAll("(?s)```json\\s*", "")
+                        .replaceAll("(?s)```\\s*", "").trim();
             }
 
             putCache(cacheKey, response);
@@ -487,9 +486,10 @@ public class AiService {
         try {
             long monthsRemaining = java.time.temporal.ChronoUnit.MONTHS.between(
                     LocalDate.now(), targetDate);
-            BigDecimal availableForSaving = monthlyIncome
-                    .multiply(savingPercentage)
-                    .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+            BigDecimal availableForSaving = monthlyIncome != null
+                    ? monthlyIncome.multiply(savingPercentage)
+                    .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP)
+                    : BigDecimal.ZERO;
             BigDecimal requiredPerMonth = monthsRemaining > 0
                     ? targetAmount.divide(BigDecimal.valueOf(monthsRemaining),
                     2, RoundingMode.HALF_UP)
