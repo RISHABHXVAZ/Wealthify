@@ -65,20 +65,21 @@ public class ExpenseService {
         log.info("AI Result: category={}, wasteful={}, confidence={}",
                 aiResult.getCategory(), aiResult.isWasteful(), aiResult.getConfidence());
 
-        // Step 4: Find category from DB (use AI result if no manual categoryId)
+// Step 4: Find category from DB (use AI result if no manual categoryId)
         Category category = null;
         if (request.getCategoryId() != null) {
             category = categoryRepository.findById(request.getCategoryId()).orElse(null);
         }
 
-        // If no manual category, find AI suggested category from DB
+// If no manual category, resolve the AI-suggested category. This never
+// returns null: an unmatched/missing/renamed category name falls back
+// to a guaranteed "Miscellaneous" row instead of silently saving the
+// expense with category=null (which the frontend then shows as
+// "Uncategorized" with no indication anything went wrong).
         if (category == null) {
-            category = categoryRepository.findAll()
-                    .stream()
-                    .filter(c -> c.getName().equalsIgnoreCase(aiResult.getCategory()))
-                    .findFirst()
-                    .orElse(null);
+            category = resolveCategory(aiResult.getCategory());
         }
+        
 
         // Step 5: Build and save expense with AI metadata
         Expense expense = Expense.builder()
@@ -129,5 +130,26 @@ public class ExpenseService {
                     + " (split between " + request.getSplitCount() + " people)";
         }
         return request.getDescription();
+    }
+
+    private static final String FALLBACK_CATEGORY_NAME = "Miscellaneous";
+
+    private Category resolveCategory(String aiCategoryName) {
+        if (aiCategoryName != null && !aiCategoryName.isBlank()) {
+            var match = categoryRepository.findByNameIgnoreCase(aiCategoryName.trim());
+            if (match.isPresent()) {
+                return match.get();
+            }
+            log.warn("AI returned unrecognized category '{}' - falling back to '{}'",
+                    aiCategoryName, FALLBACK_CATEGORY_NAME);
+        }
+
+        return categoryRepository.findByNameIgnoreCase(FALLBACK_CATEGORY_NAME)
+                .orElseGet(() -> categoryRepository.save(
+                        Category.builder()
+                                .name(FALLBACK_CATEGORY_NAME)
+                                .type("WANT")
+                                .isEssential(false)
+                                .build()));
     }
 }
