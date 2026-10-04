@@ -70,6 +70,10 @@ public class AuthService {
     }
 
     public void processForgotPassword(String email) {
+        if (email == null || email.isBlank()) {
+            return;
+        }
+
         User user = userRepository.findByEmail(email).orElse(null);
         if (user == null) {
             log.warn("Forgot password requested for non-existent email: {}", email);
@@ -93,8 +97,16 @@ public class AuthService {
             mailSender.send(message);
             log.info("OTP verification email dispatched cleanly via Gmail SMTP server.");
         } catch (Exception e) {
-            log.error("Failed to send email via Gmail SMTP: {}", e.getMessage());
-            throw new RuntimeException("Failed to dispatch password verification email.");
+            log.error("Failed to dispatch password verification email: {}", e.getMessage());
+            // Prevent account enumeration: do not expose email dispatch errors to external callers.
+            // Clear un-dispatched reset token so an undelivered OTP cannot be guessed or reused.
+            try {
+                user.setResetToken(null);
+                user.setResetTokenExpiry(null);
+                userRepository.save(user);
+            } catch (Exception rollbackEx) {
+                log.error("Failed to rollback reset token after dispatch failure: {}", rollbackEx.getMessage());
+            }
         }
     }
 
@@ -106,19 +118,15 @@ public class AuthService {
         otpRateLimiter.checkVerificationAllowed(email);
 
         User user = userRepository.findByEmail(email).orElse(null);
-        if (user == null) {
-            otpRateLimiter.recordVerificationFailure(email);
-            throw new RuntimeException("Account with this email not found.");
-        }
+        boolean isInvalid = (user == null)
+                || (user.getResetToken() == null)
+                || (!user.getResetToken().equals(otp))
+                || (user.getResetTokenExpiry() == null)
+                || (user.getResetTokenExpiry().isBefore(LocalDateTime.now()));
 
-        if (user.getResetToken() == null || !user.getResetToken().equals(otp)) {
+        if (isInvalid) {
             otpRateLimiter.recordVerificationFailure(email);
-            throw new RuntimeException("The verification OTP code is invalid.");
-        }
-
-        if (user.getResetTokenExpiry().isBefore(LocalDateTime.now())) {
-            otpRateLimiter.recordVerificationFailure(email);
-            throw new RuntimeException("This verification OTP has expired.");
+            throw new RuntimeException("Invalid or expired verification code.");
         }
 
         PasswordValidator.validate(newPassword);

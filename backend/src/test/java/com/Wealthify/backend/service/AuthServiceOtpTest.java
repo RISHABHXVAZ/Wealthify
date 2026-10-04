@@ -186,7 +186,7 @@ class AuthServiceOtpTest {
     }
 
     @Test
-    @DisplayName("verifyOtpAndResetPassword rejects invalid OTP and expired OTP")
+    @DisplayName("verifyOtpAndResetPassword rejects invalid OTP, expired OTP, and nonexistent email uniformly")
     void testVerifyOtpRejectionOnInvalidOrExpired() {
         String email = "student@example.com";
 
@@ -200,7 +200,7 @@ class AuthServiceOtpTest {
 
         assertThatThrownBy(() -> authService.verifyOtpAndResetPassword(email, "999999", "newPass"))
                 .isInstanceOf(RuntimeException.class)
-                .hasMessage("The verification OTP code is invalid.");
+                .hasMessage("Invalid or expired verification code.");
 
         // Test 2: Expired OTP
         User userWithExpiredOtp = User.builder()
@@ -212,6 +212,36 @@ class AuthServiceOtpTest {
 
         assertThatThrownBy(() -> authService.verifyOtpAndResetPassword(email, "123456", "newPass"))
                 .isInstanceOf(RuntimeException.class)
-                .hasMessage("This verification OTP has expired.");
+                .hasMessage("Invalid or expired verification code.");
+
+        // Test 3: Nonexistent account (SEC-07: anti-enumeration)
+        when(userRepository.findByEmail("nonexistent@example.com")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> authService.verifyOtpAndResetPassword("nonexistent@example.com", "123456", "newPass"))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("Invalid or expired verification code.");
+    }
+
+    @Test
+    @DisplayName("processForgotPassword handles email dispatch failure gracefully without leaking account existence")
+    void testProcessForgotPasswordEmailFailureHandledGracefully() {
+        String email = "student@example.com";
+        User user = User.builder()
+                .id(UUID.randomUUID())
+                .email(email)
+                .name("Alex Kumar")
+                .password("hashed_pw")
+                .build();
+
+        when(userRepository.findByEmail(email)).thenReturn(Optional.of(user));
+        doThrow(new org.springframework.mail.MailSendException("SMTP connection refused"))
+                .when(mailSender).send(any(SimpleMailMessage.class));
+
+        // Must not throw an exception to caller
+        org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> authService.processForgotPassword(email));
+
+        // OTP should have been cleared on dispatch failure to avoid dangling token
+        assertThat(user.getResetToken()).isNull();
+        assertThat(user.getResetTokenExpiry()).isNull();
     }
 }
