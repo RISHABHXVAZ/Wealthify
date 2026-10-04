@@ -183,7 +183,7 @@ public class AiService {
             return parseGroqResponse(response.getBody());
 
         } catch (Exception e) {
-            log.error("AI categorization failed: {}", e.getMessage(), e);
+            log.error("AI categorization failed: {}", e.getMessage());
             return getDefaultResult();
         }
     }
