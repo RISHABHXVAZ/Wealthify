@@ -160,7 +160,7 @@ class GoalSavingSecurityTest {
     @Test
     @DisplayName("VAL-01 Test 3: Valid positive saving amount succeeds and correctly increases currentSaved")
     void testPositiveAmountSucceeds() throws Exception {
-        when(goalRepository.findById(GOAL_ID)).thenReturn(Optional.of(existingGoal));
+        when(goalRepository.findByIdForUpdate(GOAL_ID)).thenReturn(Optional.of(existingGoal));
         when(goalRepository.save(any(Goal.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         mockMvc.perform(patch("/api/goals/" + GOAL_ID + "/save")
@@ -190,7 +190,7 @@ class GoalSavingSecurityTest {
     @Test
     @DisplayName("VAL-01 Test 5: Very large positive saving amount is accepted and transitions status to ACHIEVED")
     void testVeryLargePositiveAmountTransitionsToAchieved() throws Exception {
-        when(goalRepository.findById(GOAL_ID)).thenReturn(Optional.of(existingGoal));
+        when(goalRepository.findByIdForUpdate(GOAL_ID)).thenReturn(Optional.of(existingGoal));
         when(goalRepository.save(any(Goal.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         // Saving 50,000 when target is 20,000 (currently 5,000 saved) -> total 55,000
@@ -235,7 +235,7 @@ class GoalSavingSecurityTest {
                 .status("ACTIVE")
                 .build();
 
-        when(goalRepository.findById(GOAL_ID)).thenReturn(Optional.of(otherGoal));
+        when(goalRepository.findByIdForUpdate(GOAL_ID)).thenReturn(Optional.of(otherGoal));
 
         mockMvc.perform(patch("/api/goals/" + GOAL_ID + "/save")
                         .param("amount", "1000.00")
@@ -257,6 +257,7 @@ class GoalSavingSecurityTest {
                 .hasMessage("Saving amount must be positive.");
 
         verify(goalRepository, never()).findById(any());
+        verify(goalRepository, never()).findByIdForUpdate(any());
         verify(goalRepository, never()).save(any());
     }
 
@@ -268,6 +269,7 @@ class GoalSavingSecurityTest {
                 .hasMessage("Saving amount must be positive.");
 
         verify(goalRepository, never()).findById(any());
+        verify(goalRepository, never()).findByIdForUpdate(any());
         verify(goalRepository, never()).save(any());
     }
 
@@ -279,6 +281,7 @@ class GoalSavingSecurityTest {
                 .hasMessage("Saving amount must be positive.");
 
         verify(goalRepository, never()).findById(any());
+        verify(goalRepository, never()).findByIdForUpdate(any());
         verify(goalRepository, never()).save(any());
     }
 

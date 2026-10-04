@@ -6,6 +6,7 @@ import com.Wealthify.backend.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -175,13 +176,14 @@ public class GoalService {
                 .collect(Collectors.toList());
     }
 
+    @Transactional
     public GoalResponse updateGoalSaving(String email, UUID goalId,
                                          BigDecimal amount) {
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("Saving amount must be positive.");
         }
 
-        Goal goal = goalRepository.findById(goalId)
+        Goal goal = goalRepository.findByIdForUpdate(goalId)
                 .orElseThrow(() -> new RuntimeException("Goal not found"));
         if (!goal.getUser().getEmail().equals(email)) {
             throw new RuntimeException("Unauthorized");
