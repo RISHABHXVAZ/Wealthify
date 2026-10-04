@@ -4,6 +4,10 @@ import com.Wealthify.backend.dto.AiCategorizationResult;
 import com.Wealthify.backend.dto.StockRecommendationResponse;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
+import com.github.benmanes.caffeine.cache.Ticker;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -14,10 +18,8 @@ import org.springframework.web.client.RestTemplate;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.*;
+import java.util.concurrent.TimeUnit;
 
 @Service
 @RequiredArgsConstructor
@@ -36,21 +38,71 @@ public class AiService {
     @Value("${groq.model}")
     private String model;
 
-    // ─── In-memory cache ────────────────────────────────────────────────────────
-    private final Map<String, String> summaryCache = new ConcurrentHashMap<>();
-    private final Map<String, Long> cacheTimestamps = new ConcurrentHashMap<>();
-    private static final long CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+    // ─── Bounded In-memory cache (PERF-01) ──────────────────────────────────────
+    @Value("${app.ai.cache.max-capacity:1000}")
+    private long maxCapacity = 1000;
+
+    @Value("${app.ai.cache.ttl-ms:600000}")
+    private long cacheTtlMs = 10 * 60 * 1000; // 10 minutes
+
+    static class CacheEntry {
+        private final String value;
+        private volatile long timestamp;
+
+        CacheEntry(String value, long timestamp) {
+            this.value = value;
+            this.timestamp = timestamp;
+        }
+
+        String getValue() {
+            return value;
+        }
+
+        long getTimestamp() {
+            return timestamp;
+        }
+
+        void setTimestamp(long timestamp) {
+            this.timestamp = timestamp;
+        }
+    }
+
+    private Ticker ticker = null;
+    private volatile Cache<String, CacheEntry> cache = buildCache();
+
+    @PostConstruct
+    public void initCache() {
+        rebuildCache();
+    }
+
+    private synchronized Cache<String, CacheEntry> buildCache() {
+        Caffeine<Object, Object> builder = Caffeine.newBuilder()
+                .maximumSize(maxCapacity)
+                .expireAfterWrite(cacheTtlMs, TimeUnit.MILLISECONDS);
+        if (ticker != null) {
+            builder.ticker(ticker);
+        }
+        return builder.build();
+    }
+
+    private synchronized void rebuildCache() {
+        Cache<String, CacheEntry> oldCache = this.cache;
+        Cache<String, CacheEntry> newCache = buildCache();
+        if (oldCache != null) {
+            oldCache.asMap().forEach(newCache::put);
+        }
+        this.cache = newCache;
+    }
 
     String getCached(String key) {
         if (key == null) return null;
-        Long ts = cacheTimestamps.get(key);
-        if (ts != null) {
-            if (System.currentTimeMillis() - ts < CACHE_TTL_MS) {
+        CacheEntry entry = cache.getIfPresent(key);
+        if (entry != null) {
+            if (System.currentTimeMillis() - entry.getTimestamp() < cacheTtlMs) {
                 log.info("Cache hit for key: {}", key);
-                return summaryCache.get(key);
+                return entry.getValue();
             } else {
-                summaryCache.remove(key);
-                cacheTimestamps.remove(key);
+                cache.invalidate(key);
             }
         }
         return null;
@@ -58,23 +110,34 @@ public class AiService {
 
     void putCache(String key, String value) {
         if (key == null || value == null) return;
-        summaryCache.put(key, value);
-        cacheTimestamps.put(key, System.currentTimeMillis());
+        cache.put(key, new CacheEntry(value, System.currentTimeMillis()));
         log.info("Cached response for key: {}", key);
     }
 
     public void evictUserCache(UUID userId) {
         if (userId == null) return;
         String prefix = "user_" + userId + "_";
-        summaryCache.keySet().removeIf(k -> k.startsWith(prefix));
-        cacheTimestamps.keySet().removeIf(k -> k.startsWith(prefix));
+        List<String> userKeys = cache.asMap().keySet().stream()
+                .filter(k -> k.startsWith(prefix))
+                .toList();
+        cache.invalidateAll(userKeys);
+        cache.cleanUp();
         log.info("Evicted AI cache for user {}", userId);
     }
 
     public void clearAllCache() {
-        summaryCache.clear();
-        cacheTimestamps.clear();
+        cache.invalidateAll();
+        cache.cleanUp();
         log.info("Cleared all AI cache");
+    }
+
+    public void cleanUp() {
+        cache.cleanUp();
+    }
+
+    public long getCacheSize() {
+        cache.cleanUp();
+        return cache.estimatedSize();
     }
 
     private String buildUserCacheKey(UUID userId, String feature, Object... parts) {
@@ -89,13 +152,154 @@ public class AiService {
         return sb.toString();
     }
 
-    // Package-private accessors for testing
+    // Package-private accessors and modifiers for configuration and testing
+    synchronized void setMaxCapacity(long maxCapacity) {
+        this.maxCapacity = maxCapacity;
+        rebuildCache();
+    }
+
+    synchronized void setCacheTtlMs(long cacheTtlMs) {
+        this.cacheTtlMs = cacheTtlMs;
+        rebuildCache();
+    }
+
+    synchronized void setTicker(Ticker ticker) {
+        this.ticker = ticker;
+        rebuildCache();
+    }
+
+    long getMaxCapacity() {
+        return maxCapacity;
+    }
+
+    long getCacheTtlMs() {
+        return cacheTtlMs;
+    }
+
     Map<String, String> getSummaryCache() {
-        return summaryCache;
+        return new AbstractMap<>() {
+            @Override
+            public Set<Entry<String, String>> entrySet() {
+                Map<String, String> map = new HashMap<>();
+                cache.asMap().forEach((k, v) -> map.put(k, v.getValue()));
+                return map.entrySet();
+            }
+
+            @Override
+            public Set<String> keySet() {
+                return cache.asMap().keySet();
+            }
+
+            @Override
+            public String get(Object key) {
+                if (!(key instanceof String strKey)) return null;
+                CacheEntry entry = cache.getIfPresent(strKey);
+                return entry != null ? entry.getValue() : null;
+            }
+
+            @Override
+            public String put(String key, String value) {
+                CacheEntry old = cache.getIfPresent(key);
+                putCache(key, value);
+                return old != null ? old.getValue() : null;
+            }
+
+            @Override
+            public boolean containsKey(Object key) {
+                return cache.asMap().containsKey(key);
+            }
+
+            @Override
+            public int size() {
+                return (int) cache.estimatedSize();
+            }
+
+            @Override
+            public boolean isEmpty() {
+                return cache.asMap().isEmpty();
+            }
+
+            @Override
+            public String remove(Object key) {
+                if (!(key instanceof String strKey)) return null;
+                CacheEntry entry = cache.getIfPresent(strKey);
+                if (entry != null) {
+                    cache.invalidate(strKey);
+                    return entry.getValue();
+                }
+                return null;
+            }
+
+            @Override
+            public void clear() {
+                clearAllCache();
+            }
+        };
     }
 
     Map<String, Long> getCacheTimestamps() {
-        return cacheTimestamps;
+        return new AbstractMap<>() {
+            @Override
+            public Set<Entry<String, Long>> entrySet() {
+                Map<String, Long> map = new HashMap<>();
+                cache.asMap().forEach((k, v) -> map.put(k, v.getTimestamp()));
+                return map.entrySet();
+            }
+
+            @Override
+            public Set<String> keySet() {
+                return cache.asMap().keySet();
+            }
+
+            @Override
+            public Long get(Object key) {
+                if (!(key instanceof String strKey)) return null;
+                CacheEntry entry = cache.getIfPresent(strKey);
+                return entry != null ? entry.getTimestamp() : null;
+            }
+
+            @Override
+            public Long put(String key, Long value) {
+                CacheEntry entry = cache.getIfPresent(key);
+                if (entry != null) {
+                    long old = entry.getTimestamp();
+                    entry.setTimestamp(value != null ? value : System.currentTimeMillis());
+                    return old;
+                }
+                return null;
+            }
+
+            @Override
+            public boolean containsKey(Object key) {
+                return cache.asMap().containsKey(key);
+            }
+
+            @Override
+            public int size() {
+                return (int) cache.estimatedSize();
+            }
+
+            @Override
+            public boolean isEmpty() {
+                return cache.asMap().isEmpty();
+            }
+
+            @Override
+            public Long remove(Object key) {
+                if (!(key instanceof String strKey)) return null;
+                CacheEntry entry = cache.getIfPresent(strKey);
+                if (entry != null) {
+                    cache.invalidate(strKey);
+                    return entry.getTimestamp();
+                }
+                return null;
+            }
+
+            @Override
+            public void clear() {
+                clearAllCache();
+            }
+        };
     }
 
     // ─── Retry with exponential backoff ─────────────────────────────────────────
