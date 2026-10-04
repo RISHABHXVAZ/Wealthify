@@ -2,9 +2,11 @@ package com.Wealthify.backend.config;
 
 import com.Wealthify.backend.security.JwtFilter;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -13,36 +15,38 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+import java.util.Arrays;
+import java.util.List;
 
 @Configuration
 @RequiredArgsConstructor
+@Slf4j
 public class SecurityConfig {
 
     private final JwtFilter jwtFilter;
+    private final Environment environment;
 
-    @Value("${app.frontend.url}")
+    @Value("${app.frontend.url:}")
     private String frontendUrl;
 
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+    public CorsConfigurationSource corsConfigurationSource() {
+        boolean isProduction = isProductionEnvironment();
+        List<String> allowedOrigins = CorsConfigurationHelper.resolveAllowedOrigins(frontendUrl, isProduction);
+        log.info("CORS initialized with allowed origins (production={}): {}", isProduction, allowedOrigins);
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", CorsConfigurationHelper.buildCorsConfiguration(allowedOrigins));
+        return source;
+    }
+
+    @Bean
+    public SecurityFilterChain filterChain(HttpSecurity http, CorsConfigurationSource corsConfigurationSource) throws Exception {
         http
-                .cors(cors -> cors.configurationSource(request -> {
-                    var config = new org.springframework.web.cors.CorsConfiguration();
-                    // Strip a trailing slash so a small env-var typo (e.g.
-                    // "https://wealthify-frontend.vercel.app/") doesn't
-                    // silently break CORS for the whole frontend.
-                    String normalizedFrontendUrl = frontendUrl != null
-                            ? frontendUrl.replaceAll("/+$", "")
-                            : frontendUrl;
-                    config.setAllowedOrigins(java.util.List.of(
-                            "http://localhost:5173",
-                            normalizedFrontendUrl
-                    ));
-                    config.setAllowedMethods(java.util.List.of("GET","POST","PUT","DELETE","OPTIONS"));
-                    config.setAllowedHeaders(java.util.List.of("*"));
-                    config.setAllowCredentials(true);
-                    return config;
-                }))
+                .cors(cors -> cors.configurationSource(corsConfigurationSource))
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
@@ -51,6 +55,18 @@ public class SecurityConfig {
                 )
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
+    }
+
+    private boolean isProductionEnvironment() {
+        List<String> activeProfiles = Arrays.asList(environment.getActiveProfiles());
+        if (activeProfiles.contains("prod")) {
+            return true;
+        }
+        if (activeProfiles.contains("local") || activeProfiles.contains("test")) {
+            return false;
+        }
+        String defaultProfile = environment.getProperty("spring.profiles.active", "prod");
+        return "prod".equalsIgnoreCase(defaultProfile);
     }
 
     @Bean
