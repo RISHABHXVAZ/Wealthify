@@ -177,12 +177,17 @@ public class GoalService {
 
     public GoalResponse updateGoalSaving(String email, UUID goalId,
                                          BigDecimal amount) {
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Saving amount must be positive.");
+        }
+
         Goal goal = goalRepository.findById(goalId)
                 .orElseThrow(() -> new RuntimeException("Goal not found"));
         if (!goal.getUser().getEmail().equals(email)) {
             throw new RuntimeException("Unauthorized");
         }
-        goal.setCurrentSaved(goal.getCurrentSaved().add(amount));
+        BigDecimal current = goal.getCurrentSaved() != null ? goal.getCurrentSaved() : BigDecimal.ZERO;
+        goal.setCurrentSaved(current.add(amount));
         if (goal.getCurrentSaved().compareTo(goal.getTargetAmount()) >= 0) {
             goal.setStatus("ACHIEVED");
         }

@@ -57,7 +57,10 @@ public class GoalController {
     public ResponseEntity<GoalResponse> updateSaving(
             @AuthenticationPrincipal UserDetails userDetails,
             @PathVariable UUID id,
-            @RequestParam BigDecimal amount) {
+            @RequestParam(required = false) BigDecimal amount) {
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Saving amount must be positive.");
+        }
         return ResponseEntity.ok(
                 goalService.updateGoalSaving(
                         userDetails.getUsername(), id, amount));

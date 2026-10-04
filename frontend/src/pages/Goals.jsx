@@ -22,7 +22,7 @@ const GoalCard = ({ goal, onDelete, onAddSaving, monthlySavingAmount, savingPerc
   const [saving, setSaving] = useState(false);
 
   const handleAddSaving = async () => {
-    if (!amount) return;
+    if (!amount || parseFloat(amount) <= 0) return;
     setSaving(true);
     try {
       await onAddSaving(goal.id, parseFloat(amount));
@@ -190,6 +190,8 @@ const GoalCard = ({ goal, onDelete, onAddSaving, monthlySavingAmount, savingPerc
             <div className="flex gap-2">
               <input
                 type="number"
+                min="0.01"
+                step="any"
                 value={amount}
                 onChange={e => setAmount(e.target.value)}
                 className="flex-1 bg-gray-800 text-white rounded-xl px-3 py-2 border border-gray-700 focus:border-green-500 focus:outline-none text-sm"
@@ -198,8 +200,8 @@ const GoalCard = ({ goal, onDelete, onAddSaving, monthlySavingAmount, savingPerc
               />
               <button
                 onClick={handleAddSaving}
-                disabled={saving}
-                className="bg-green-500 hover:bg-green-600 text-white px-4 rounded-xl text-sm font-medium transition-all"
+                disabled={saving || !amount || parseFloat(amount) <= 0}
+                className="bg-green-500 hover:bg-green-600 text-white px-4 rounded-xl text-sm font-medium transition-all disabled:opacity-50"
               >
                 {saving
                   ? <Loader size={14} className="animate-spin" />
