@@ -44,6 +44,9 @@ class AuthServiceOtpTest {
     @Mock
     private JavaMailSender mailSender;
 
+    @Mock
+    private AiService aiService;
+
     @Spy
     private OtpRateLimiter otpRateLimiter = new OtpRateLimiter(3, 3, 600, 5, 900);
 

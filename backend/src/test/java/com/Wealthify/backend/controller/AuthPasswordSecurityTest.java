@@ -7,6 +7,7 @@ import com.Wealthify.backend.exception.GlobalExceptionHandler;
 import com.Wealthify.backend.repository.UserRepository;
 import com.Wealthify.backend.security.JwtUtil;
 import com.Wealthify.backend.security.OtpRateLimiter;
+import com.Wealthify.backend.service.AiService;
 import com.Wealthify.backend.service.AuthService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -56,6 +57,9 @@ class AuthPasswordSecurityTest {
 
     @Mock
     private JavaMailSender mailSender;
+
+    @Mock
+    private AiService aiService;
 
     private OtpRateLimiter otpRateLimiter;
     private AuthController authController;
@@ -200,7 +204,7 @@ class AuthPasswordSecurityTest {
     @Test
     @DisplayName("AuthService: register rejects invalid password before hashing or saving")
     void testAuthServiceRegisterValidatesPassword() {
-        AuthService service = new AuthService(userRepository, passwordEncoder, jwtUtil, authenticationManager, mailSender, otpRateLimiter);
+        AuthService service = new AuthService(userRepository, passwordEncoder, jwtUtil, authenticationManager, mailSender, otpRateLimiter, aiService);
 
         RegisterRequest weakRequest = RegisterRequest.builder()
                 .name("Alex")
@@ -219,7 +223,7 @@ class AuthPasswordSecurityTest {
     @Test
     @DisplayName("AuthService: verifyOtpAndResetPassword rejects invalid password before hashing or saving")
     void testAuthServiceResetPasswordValidatesPassword() {
-        AuthService service = new AuthService(userRepository, passwordEncoder, jwtUtil, authenticationManager, mailSender, otpRateLimiter);
+        AuthService service = new AuthService(userRepository, passwordEncoder, jwtUtil, authenticationManager, mailSender, otpRateLimiter, aiService);
 
         String email = "alex@example.com";
         String validOtp = "654321";

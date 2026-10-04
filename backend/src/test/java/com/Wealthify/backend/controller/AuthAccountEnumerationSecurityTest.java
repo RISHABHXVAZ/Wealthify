@@ -5,6 +5,7 @@ import com.Wealthify.backend.exception.GlobalExceptionHandler;
 import com.Wealthify.backend.repository.UserRepository;
 import com.Wealthify.backend.security.JwtUtil;
 import com.Wealthify.backend.security.OtpRateLimiter;
+import com.Wealthify.backend.service.AiService;
 import com.Wealthify.backend.service.AuthService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -64,6 +65,9 @@ class AuthAccountEnumerationSecurityTest {
     @Mock
     private JavaMailSender mailSender;
 
+    @Mock
+    private AiService aiService;
+
     private OtpRateLimiter otpRateLimiter;
     private AuthService authService;
     private AuthController authController;
@@ -85,7 +89,8 @@ class AuthAccountEnumerationSecurityTest {
                 jwtUtil,
                 authenticationManager,
                 mailSender,
-                otpRateLimiter
+                otpRateLimiter,
+                aiService
         );
         ReflectionTestUtils.setField(authService, "senderEmail", "noreply@wealthify.test");
 

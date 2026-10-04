@@ -33,6 +33,7 @@ public class AuthService {
     private final AuthenticationManager authenticationManager;
     private final JavaMailSender mailSender; // Injects the Gmail SMTP configurations cleanly
     private final OtpRateLimiter otpRateLimiter;
+    private final AiService aiService;
 
     @Value("${spring.mail.username}")
     private String senderEmail;
@@ -144,8 +145,12 @@ public class AuthService {
     public String updateIncome(String email, BigDecimal income) {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("User not found"));
+        if (income == null || income.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Monthly income must be greater than zero");
+        }
         user.setMonthlyIncome(income);
         userRepository.save(user);
+        aiService.evictUserCache(user.getId());
         return "Monthly income updated to ₹" + income;
     }
 }
