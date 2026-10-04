@@ -13,6 +13,7 @@ import org.springframework.security.authentication.*;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import com.Wealthify.backend.exception.BusinessException;
 import com.Wealthify.backend.security.OtpRateLimiter;
 import com.Wealthify.backend.security.PasswordValidator;
 
@@ -49,7 +50,7 @@ public class AuthService {
         PasswordValidator.validate(request.getPassword());
 
         if (userRepository.existsByEmail(request.getEmail())) {
-            throw new RuntimeException("Email already registered");
+            throw new BusinessException("Email already registered");
         }
         User user = User.builder()
                 .name(request.getName())
@@ -65,7 +66,7 @@ public class AuthService {
                 new UsernamePasswordAuthenticationToken(
                         request.getEmail(), request.getPassword()));
         User user = userRepository.findByEmail(request.getEmail())
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new BusinessException("User not found"));
         String token = jwtUtil.generateToken(user.getEmail());
         return new LoginResponse(token, user.getName(), user.getEmail());
     }
@@ -113,7 +114,7 @@ public class AuthService {
 
     public String verifyOtpAndResetPassword(String email, String otp, String newPassword) {
         if (email == null || email.isBlank()) {
-            throw new RuntimeException("Email is required.");
+            throw new BusinessException("Email is required.");
         }
 
         otpRateLimiter.checkVerificationAllowed(email);
@@ -127,7 +128,7 @@ public class AuthService {
 
         if (isInvalid) {
             otpRateLimiter.recordVerificationFailure(email);
-            throw new RuntimeException("Invalid or expired verification code.");
+            throw new BusinessException("Invalid or expired verification code.");
         }
 
         PasswordValidator.validate(newPassword);
@@ -144,7 +145,7 @@ public class AuthService {
 
     public String updateIncome(String email, BigDecimal income) {
         User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new BusinessException("User not found"));
         if (income == null || income.compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("Monthly income must be greater than zero");
         }

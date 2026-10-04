@@ -2,6 +2,7 @@ package com.Wealthify.backend.service;
 
 import com.Wealthify.backend.dto.*;
 import com.Wealthify.backend.entity.*;
+import com.Wealthify.backend.exception.BusinessException;
 import com.Wealthify.backend.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -30,7 +31,7 @@ public class GoalService {
     public BudgetAllocationResponse setupBudget(String email,
                                                 BudgetSetupRequest request) {
         User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new BusinessException("User not found"));
 
         user.setMonthlyIncome(request.getMonthlyIncome());
         user.setSavingPercentage(request.getSavingPercentage());
@@ -43,7 +44,7 @@ public class GoalService {
 
     public BudgetAllocationResponse getBudgetAllocation(String email) {
         User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new BusinessException("User not found"));
         return buildBudgetResponse(user);
     }
 
@@ -111,7 +112,7 @@ public class GoalService {
 
     public GoalResponse createGoal(String email, GoalRequest request) {
         User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new BusinessException("User not found"));
 
         // Get spending pattern for AI context
         LocalDate threeMonthsAgo = LocalDate.now().minusMonths(3);
@@ -163,7 +164,7 @@ public class GoalService {
 
     public List<GoalResponse> getGoals(String email) {
         User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new BusinessException("User not found"));
 
         BigDecimal income = user.getMonthlyIncome() != null
                 ? user.getMonthlyIncome() : BigDecimal.ZERO;
@@ -184,9 +185,9 @@ public class GoalService {
         }
 
         Goal goal = goalRepository.findByIdForUpdate(goalId)
-                .orElseThrow(() -> new RuntimeException("Goal not found"));
+                .orElseThrow(() -> new BusinessException("Goal not found"));
         if (!goal.getUser().getEmail().equals(email)) {
-            throw new RuntimeException("Unauthorized");
+            throw new BusinessException("Unauthorized");
         }
         BigDecimal current = goal.getCurrentSaved() != null ? goal.getCurrentSaved() : BigDecimal.ZERO;
         goal.setCurrentSaved(current.add(amount));
@@ -205,9 +206,9 @@ public class GoalService {
 
     public void deleteGoal(String email, UUID goalId) {
         Goal goal = goalRepository.findById(goalId)
-                .orElseThrow(() -> new RuntimeException("Goal not found"));
+                .orElseThrow(() -> new BusinessException("Goal not found"));
         if (!goal.getUser().getEmail().equals(email)) {
-            throw new RuntimeException("Unauthorized");
+            throw new BusinessException("Unauthorized");
         }
         goalRepository.delete(goal);
     }

@@ -4,6 +4,7 @@ import com.Wealthify.backend.dto.AiCategorizationResult;
 import com.Wealthify.backend.dto.ExpenseRequest;
 import com.Wealthify.backend.dto.ExpenseResponse;
 import com.Wealthify.backend.entity.*;
+import com.Wealthify.backend.exception.BusinessException;
 import com.Wealthify.backend.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,7 +28,7 @@ public class ExpenseService {
 
     public ExpenseResponse addExpense(String email, ExpenseRequest request) {
         User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new BusinessException("User not found"));
 
         // Step 1: Handle split expense
         BigDecimal finalAmount = request.getAmount();
@@ -102,7 +103,7 @@ public class ExpenseService {
 
     public List<ExpenseResponse> getExpensesByDate(String email, LocalDate date) {
         User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new BusinessException("User not found"));
         return expenseRepository
                 .findByUserAndExpenseDateBetweenOrderByExpenseDateDesc(user, date, date)
                 .stream()
@@ -112,7 +113,7 @@ public class ExpenseService {
 
     public List<ExpenseResponse> getExpensesByMonth(String email, int month, int year) {
         User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new BusinessException("User not found"));
         LocalDate start = LocalDate.of(year, month, 1);
         LocalDate end = start.withDayOfMonth(start.lengthOfMonth());
         return expenseRepository
@@ -124,9 +125,9 @@ public class ExpenseService {
 
     public void deleteExpense(String email, UUID expenseId) {
         Expense expense = expenseRepository.findById(expenseId)
-                .orElseThrow(() -> new RuntimeException("Expense not found"));
+                .orElseThrow(() -> new BusinessException("Expense not found"));
         if (!expense.getUser().getEmail().equals(email)) {
-            throw new RuntimeException("Unauthorized");
+            throw new BusinessException("Unauthorized");
         }
         expenseRepository.delete(expense);
         aiService.evictUserCache(expense.getUser().getId());

@@ -3,6 +3,7 @@ package com.Wealthify.backend.service;
 import com.Wealthify.backend.dto.*;
 import com.Wealthify.backend.entity.Expense;
 import com.Wealthify.backend.entity.User;
+import com.Wealthify.backend.exception.BusinessException;
 import com.Wealthify.backend.repository.ExpenseRepository;
 import com.Wealthify.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -26,7 +27,7 @@ public class AnalyticsService {
 
     public DailySummaryResponse getDailySummary(String email, LocalDate date) {
         User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new BusinessException("User not found"));
 
         List<Expense> expenses = expenseRepository
                 .findByUserAndExpenseDateBetweenOrderByExpenseDateDesc(user, date, date);
@@ -36,7 +37,7 @@ public class AnalyticsService {
 
     public MonthlySummaryResponse getMonthlySummary(String email, int month, int year) {
         User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new BusinessException("User not found"));
 
         LocalDate start = LocalDate.of(year, month, 1);
         LocalDate end = start.withDayOfMonth(start.lengthOfMonth());

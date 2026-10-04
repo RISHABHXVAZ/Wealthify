@@ -3,10 +3,12 @@ package com.Wealthify.backend.exception;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.util.Map;
 
@@ -21,12 +23,20 @@ import java.util.Map;
 @Slf4j
 public class GlobalExceptionHandler {
 
+    public static final String GENERIC_ERROR_MESSAGE = "Something went wrong. Please try again later.";
+
     @ExceptionHandler(RateLimitExceededException.class)
     public ResponseEntity<Map<String, String>> handleRateLimitExceeded(RateLimitExceededException ex) {
         log.warn("Rate limit / attempt limit triggered: {}", ex.getMessage());
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
                 .header("Retry-After", String.valueOf(ex.getRetryAfterSeconds()))
                 .body(Map.of("message", ex.getMessage()));
+    }
+
+    @ExceptionHandler(BusinessException.class)
+    public ResponseEntity<Map<String, String>> handleBusinessException(BusinessException ex) {
+        log.warn("Business rule violation: {}", ex.getMessage());
+        return ResponseEntity.status(ex.getStatus()).body(Map.of("message", ex.getMessage()));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
@@ -50,17 +60,30 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest().body(Map.of("message", message));
     }
 
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<Map<String, String>> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+        String name = ex.getName();
+        log.warn("Method argument type mismatch for parameter '{}': {}", name, ex.getMessage());
+        return ResponseEntity.badRequest().body(Map.of("message", "Invalid value for parameter: " + name));
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<Map<String, String>> handleMessageNotReadable(HttpMessageNotReadableException ex) {
+        log.warn("Malformed HTTP request body: {}", ex.getMessage());
+        return ResponseEntity.badRequest().body(Map.of("message", "Malformed or unreadable request body"));
+    }
+
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<Map<String, String>> handleRuntimeException(RuntimeException ex) {
-        log.error("Request failed: {}", ex.getMessage(), ex);
-        String message = ex.getMessage() != null ? ex.getMessage() : "Something went wrong. Please try again.";
-        return ResponseEntity.badRequest().body(Map.of("message", message));
+        log.error("Unexpected runtime exception", ex);
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of("message", GENERIC_ERROR_MESSAGE));
     }
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, String>> handleGeneric(Exception ex) {
         log.error("Unexpected server error", ex);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(Map.of("message", "Something went wrong on our end. Please try again shortly."));
+                .body(Map.of("message", GENERIC_ERROR_MESSAGE));
     }
 }
