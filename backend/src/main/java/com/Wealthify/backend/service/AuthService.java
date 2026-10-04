@@ -14,6 +14,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import com.Wealthify.backend.security.OtpRateLimiter;
+import com.Wealthify.backend.security.PasswordValidator;
 
 import java.math.BigDecimal;
 import java.security.SecureRandom;
@@ -41,6 +42,11 @@ public class AuthService {
     }
 
     public String register(RegisterRequest request) {
+        if (request == null) {
+            throw new IllegalArgumentException("Registration request cannot be null");
+        }
+        PasswordValidator.validate(request.getPassword());
+
         if (userRepository.existsByEmail(request.getEmail())) {
             throw new RuntimeException("Email already registered");
         }
@@ -114,6 +120,8 @@ public class AuthService {
             otpRateLimiter.recordVerificationFailure(email);
             throw new RuntimeException("This verification OTP has expired.");
         }
+
+        PasswordValidator.validate(newPassword);
 
         otpRateLimiter.recordVerificationSuccess(email);
 

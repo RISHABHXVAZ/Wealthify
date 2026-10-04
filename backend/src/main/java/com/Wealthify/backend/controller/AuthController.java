@@ -43,11 +43,11 @@ public class AuthController {
     }
 
     @PostMapping("/reset-password")
-    public ResponseEntity<Map<String, String>> resetPassword(@RequestBody Map<String, String> request) {
+    public ResponseEntity<Map<String, String>> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
         String msg = authService.verifyOtpAndResetPassword(
-                request.get("email"),
-                request.get("otp"),
-                request.get("newPassword")
+                request.getEmail(),
+                request.getOtp(),
+                request.getNewPassword()
         );
         return ResponseEntity.ok(Map.of("message", msg));
     }
