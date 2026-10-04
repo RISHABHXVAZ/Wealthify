@@ -65,6 +65,7 @@ const AddExpense = () => {
                         <label className="text-sm text-gray-400 mb-1 block">Description</label>
                         <input
                             type="text"
+                            maxLength={150}
                             value={form.description}
                             onChange={e => setForm({ ...form, description: e.target.value })}
                             className="w-full bg-gray-800 text-white rounded-xl px-4 py-3 border border-gray-700 focus:border-green-500 focus:outline-none"

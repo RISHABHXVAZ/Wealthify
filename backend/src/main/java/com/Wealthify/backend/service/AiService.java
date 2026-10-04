@@ -396,6 +396,8 @@ public class AiService {
                                BigDecimal monthlyIncome, BigDecimal monthlySpentSoFar,
                                BigDecimal remainingBudget) {
 
+        String safeDescription = description != null ? description.replaceAll("[\\r\\n]+", " ").trim() : "";
+
         double remainingBudgetRatio = remainingBudget.compareTo(BigDecimal.ZERO) > 0
                 ? amount.divide(remainingBudget, 4, RoundingMode.HALF_UP)
                 .multiply(BigDecimal.valueOf(100)).doubleValue()
@@ -446,7 +448,7 @@ public class AiService {
               "reason": "One sentence explanation mentioning the percentage of remaining budget"
             }
             """.formatted(
-                description, amount, monthlyIncome, monthlySpentSoFar,
+                safeDescription, amount, monthlyIncome, monthlySpentSoFar,
                 remainingBudget, remainingBudgetRatio);
     }
 
@@ -771,7 +773,8 @@ public class AiService {
                                    BigDecimal savingPercentage,
                                    Map<String, BigDecimal> spendingPattern,
                                    BigDecimal avgMonthlyExpense) {
-        String sanitizedItem = itemName != null ? itemName.replaceAll("\\s+", "_") : "item";
+        String safeItemName = itemName != null ? itemName.replaceAll("[\\r\\n]+", " ").trim() : "item";
+        String sanitizedItem = safeItemName.replaceAll("\\s+", "_");
         String cacheKey = buildUserCacheKey(userId, "goal_plan", sanitizedItem, targetAmount, targetDate);
         String cached = getCached(cacheKey);
         if (cached != null) return cached;
@@ -805,7 +808,7 @@ public class AiService {
                 Respond with a detailed but concise plan in plain text (3-4 sentences max).
                 Include: achievability, required monthly saving, specific spending cuts needed.
                 """.formatted(
-                    itemName, targetAmount, targetDate, monthsRemaining,
+                    safeItemName, targetAmount, targetDate, monthsRemaining,
                     monthlyIncome, savingPercentage != null ? savingPercentage.doubleValue() : 0.0,
                     availableForSaving, avgMonthlyExpense,
                     spendingPattern != null ? spendingPattern.toString() : "{}", requiredPerMonth);

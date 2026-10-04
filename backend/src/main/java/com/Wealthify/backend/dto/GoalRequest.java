@@ -9,6 +9,7 @@ import java.time.LocalDate;
 public class GoalRequest {
 
     @NotBlank
+    @Size(max = 100, message = "Item name must not exceed 100 characters")
     private String itemName;
 
     @NotNull
