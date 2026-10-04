@@ -31,7 +31,7 @@ public class AnalyticsService {
         List<Expense> expenses = expenseRepository
                 .findByUserAndExpenseDateBetweenOrderByExpenseDateDesc(user, date, date);
 
-        return buildDailySummary(date, expenses);
+        return buildDailySummary(user.getId(), date, expenses);
     }
 
     public MonthlySummaryResponse getMonthlySummary(String email, int month, int year) {
@@ -50,7 +50,7 @@ public class AnalyticsService {
 
         List<DailySummaryResponse> dailyBreakdown = byDay.entrySet().stream()
                 .sorted(Map.Entry.comparingByKey())
-                .map(e -> buildDailySummary(e.getKey(), e.getValue()))
+                .map(e -> buildDailySummary(user.getId(), e.getKey(), e.getValue()))
                 .collect(Collectors.toList());
 
         // Total spent
@@ -86,12 +86,12 @@ public class AnalyticsService {
 
         // AI monthly summary
         String aiSummary = generateMonthlySummary(
-                allExpenses, totalSpent, income, spendingByCategory
+                user.getId(), month, year, allExpenses, totalSpent, income, spendingByCategory
         );
 
         // AI tips
         List<String> aiTips = generateAiTips(
-                spendingByCategory, wastefulAmount, income
+                user.getId(), month, year, spendingByCategory, wastefulAmount, income
         );
 
         return MonthlySummaryResponse.builder()
@@ -113,7 +113,7 @@ public class AnalyticsService {
 
     // ─── Private Helpers ────────────────────────────────────────────
 
-    private DailySummaryResponse buildDailySummary(LocalDate date, List<Expense> expenses) {
+    private DailySummaryResponse buildDailySummary(UUID userId, LocalDate date, List<Expense> expenses) {
         BigDecimal totalSpent = expenses.stream()
                 .map(Expense::getAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -135,7 +135,7 @@ public class AnalyticsService {
 
         String aiSummary = expenses.isEmpty()
                 ? "No expenses recorded for this day."
-                : aiService.generateDailySummary(totalSpent, spendingByCategory, wastefulCount);
+                : aiService.generateDailySummary(userId, date, totalSpent, spendingByCategory, wastefulCount);
 
         return DailySummaryResponse.builder()
                 .date(date)
@@ -181,17 +181,19 @@ public class AnalyticsService {
                 .build();
     }
 
-    private String generateMonthlySummary(List<Expense> expenses,
+    private String generateMonthlySummary(UUID userId, int month, int year,
+                                          List<Expense> expenses,
                                           BigDecimal totalSpent,
                                           BigDecimal income,
                                           Map<String, BigDecimal> byCategory) {
         if (expenses.isEmpty()) return "No expenses recorded this month.";
-        return aiService.generateMonthlySummary(totalSpent, income, byCategory);
+        return aiService.generateMonthlySummary(userId, month, year, totalSpent, income, byCategory);
     }
 
-    private List<String> generateAiTips(Map<String, BigDecimal> byCategory,
+    private List<String> generateAiTips(UUID userId, int month, int year,
+                                        Map<String, BigDecimal> byCategory,
                                         BigDecimal wastefulAmount,
                                         BigDecimal income) {
-        return aiService.generateSpendingTips(byCategory, wastefulAmount, income);
+        return aiService.generateSpendingTips(userId, month, year, byCategory, wastefulAmount, income);
     }
 }

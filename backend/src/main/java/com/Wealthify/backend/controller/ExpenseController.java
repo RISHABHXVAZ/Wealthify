@@ -1,7 +1,7 @@
 package com.Wealthify.backend.controller;
 
 import com.Wealthify.backend.dto.ExpenseRequest;
-import com.Wealthify.backend.entity.Expense;
+import com.Wealthify.backend.dto.ExpenseResponse;
 import com.Wealthify.backend.service.ExpenseService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -21,7 +21,7 @@ public class ExpenseController {
     private final ExpenseService expenseService;
 
     @PostMapping
-    public ResponseEntity<Expense> addExpense(
+    public ResponseEntity<ExpenseResponse> addExpense(
             @AuthenticationPrincipal UserDetails userDetails,
             @Valid @RequestBody ExpenseRequest request) {
         return ResponseEntity.ok(
@@ -29,7 +29,7 @@ public class ExpenseController {
     }
 
     @GetMapping("/today")
-    public ResponseEntity<List<Expense>> getToday(
+    public ResponseEntity<List<ExpenseResponse>> getToday(
             @AuthenticationPrincipal UserDetails userDetails) {
         return ResponseEntity.ok(
                 expenseService.getExpensesByDate(
@@ -37,7 +37,7 @@ public class ExpenseController {
     }
 
     @GetMapping("/date/{date}")
-    public ResponseEntity<List<Expense>> getByDate(
+    public ResponseEntity<List<ExpenseResponse>> getByDate(
             @AuthenticationPrincipal UserDetails userDetails,
             @PathVariable String date) {
         return ResponseEntity.ok(
@@ -46,7 +46,7 @@ public class ExpenseController {
     }
 
     @GetMapping("/month/{year}/{month}")
-    public ResponseEntity<List<Expense>> getByMonth(
+    public ResponseEntity<List<ExpenseResponse>> getByMonth(
             @AuthenticationPrincipal UserDetails userDetails,
             @PathVariable int year,
             @PathVariable int month) {

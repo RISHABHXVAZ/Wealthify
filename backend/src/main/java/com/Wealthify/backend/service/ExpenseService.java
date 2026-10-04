@@ -2,6 +2,7 @@ package com.Wealthify.backend.service;
 
 import com.Wealthify.backend.dto.AiCategorizationResult;
 import com.Wealthify.backend.dto.ExpenseRequest;
+import com.Wealthify.backend.dto.ExpenseResponse;
 import com.Wealthify.backend.entity.*;
 import com.Wealthify.backend.repository.*;
 import lombok.RequiredArgsConstructor;
@@ -24,7 +25,7 @@ public class ExpenseService {
     private final CategoryRepository categoryRepository;
     private final AiService aiService;
 
-    public Expense addExpense(String email, ExpenseRequest request) {
+    public ExpenseResponse addExpense(String email, ExpenseRequest request) {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
@@ -94,23 +95,31 @@ public class ExpenseService {
                         ? request.getExpenseDate() : LocalDate.now())
                 .build();
 
-        return expenseRepository.save(expense);
+        Expense saved = expenseRepository.save(expense);
+        aiService.evictUserCache(user.getId());
+        return ExpenseResponse.fromEntity(saved);
     }
 
-    public List<Expense> getExpensesByDate(String email, LocalDate date) {
+    public List<ExpenseResponse> getExpensesByDate(String email, LocalDate date) {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("User not found"));
         return expenseRepository
-                .findByUserAndExpenseDateBetweenOrderByExpenseDateDesc(user, date, date);
+                .findByUserAndExpenseDateBetweenOrderByExpenseDateDesc(user, date, date)
+                .stream()
+                .map(ExpenseResponse::fromEntity)
+                .toList();
     }
 
-    public List<Expense> getExpensesByMonth(String email, int month, int year) {
+    public List<ExpenseResponse> getExpensesByMonth(String email, int month, int year) {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("User not found"));
         LocalDate start = LocalDate.of(year, month, 1);
         LocalDate end = start.withDayOfMonth(start.lengthOfMonth());
         return expenseRepository
-                .findByUserAndExpenseDateBetweenOrderByExpenseDateDesc(user, start, end);
+                .findByUserAndExpenseDateBetweenOrderByExpenseDateDesc(user, start, end)
+                .stream()
+                .map(ExpenseResponse::fromEntity)
+                .toList();
     }
 
     public void deleteExpense(String email, UUID expenseId) {
@@ -120,6 +129,7 @@ public class ExpenseService {
             throw new RuntimeException("Unauthorized");
         }
         expenseRepository.delete(expense);
+        aiService.evictUserCache(expense.getUser().getId());
     }
 
     // ─── Private Helpers ─────────────────────────────────────────────

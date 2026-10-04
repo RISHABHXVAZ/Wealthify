@@ -13,23 +13,32 @@ import org.springframework.security.authentication.*;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import com.Wealthify.backend.security.OtpRateLimiter;
+
 import java.math.BigDecimal;
+import java.security.SecureRandom;
 import java.time.LocalDateTime;
-import java.util.Random;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class AuthService {
 
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
     private final AuthenticationManager authenticationManager;
     private final JavaMailSender mailSender; // Injects the Gmail SMTP configurations cleanly
+    private final OtpRateLimiter otpRateLimiter;
 
     @Value("${spring.mail.username}")
     private String senderEmail;
+
+    String generateOtp() {
+        return String.format("%06d", SECURE_RANDOM.nextInt(1_000_000));
+    }
 
     public String register(RegisterRequest request) {
         if (userRepository.existsByEmail(request.getEmail())) {
@@ -61,8 +70,8 @@ public class AuthService {
             return;
         }
 
-        // Generate 6-digit OTP
-        String otp = String.format("%06d", new Random().nextInt(1000000));
+        // Generate cryptographically secure 6-digit OTP
+        String otp = generateOtp();
 
         user.setResetToken(otp);
         user.setResetTokenExpiry(LocalDateTime.now().plusMinutes(5));
@@ -84,16 +93,29 @@ public class AuthService {
     }
 
     public String verifyOtpAndResetPassword(String email, String otp, String newPassword) {
-        User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("Account with this email not found."));
+        if (email == null || email.isBlank()) {
+            throw new RuntimeException("Email is required.");
+        }
+
+        otpRateLimiter.checkVerificationAllowed(email);
+
+        User user = userRepository.findByEmail(email).orElse(null);
+        if (user == null) {
+            otpRateLimiter.recordVerificationFailure(email);
+            throw new RuntimeException("Account with this email not found.");
+        }
 
         if (user.getResetToken() == null || !user.getResetToken().equals(otp)) {
+            otpRateLimiter.recordVerificationFailure(email);
             throw new RuntimeException("The verification OTP code is invalid.");
         }
 
         if (user.getResetTokenExpiry().isBefore(LocalDateTime.now())) {
+            otpRateLimiter.recordVerificationFailure(email);
             throw new RuntimeException("This verification OTP has expired.");
         }
+
+        otpRateLimiter.recordVerificationSuccess(email);
 
         user.setPassword(passwordEncoder.encode(newPassword));
         user.setResetToken(null);

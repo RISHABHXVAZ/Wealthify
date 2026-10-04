@@ -25,12 +25,15 @@ public class User {
     private String email;
 
     @Column(nullable = false)
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private String password;
 
     @Column(name = "reset_token")
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private String resetToken;
 
     @Column(name = "reset_token_expiry")
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private LocalDateTime resetTokenExpiry;
 
     @Column(name = "monthly_income")

@@ -35,6 +35,7 @@ public class GoalService {
         user.setSavingPercentage(request.getSavingPercentage());
         user.setInvestmentPercentage(request.getInvestmentPercentage());
         userRepository.save(user);
+        aiService.evictUserCache(user.getId());
 
         return buildBudgetResponse(user);
     }
@@ -85,6 +86,7 @@ public class GoalService {
                 : 0.0;
 
         String aiAdvice = aiService.generateBudgetAdvice(
+                user.getId(), LocalDate.now().getMonthValue(), LocalDate.now().getYear(),
                 income, spentThisMonth, savingAmount,
                 investmentAmount, remaining);
 
@@ -140,6 +142,7 @@ public class GoalService {
 
         // Generate AI plan
         String aiPlan = aiService.generateGoalPlan(
+                user.getId(),
                 request.getItemName(), request.getTargetAmount(),
                 request.getTargetDate(), income, savePct,
                 spendingPattern, avgMonthly);

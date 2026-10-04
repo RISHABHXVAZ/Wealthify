@@ -88,13 +88,14 @@ public class StockAdvisorService {
                 ? user.getMonthlyIncome() : BigDecimal.ZERO;
 
         List<String> recommendations = aiService.generateWastefulRecommendations(
+                user.getId(), month, year,
                 wastefulByCategory, totalWasteful, income
         );
 
         String aiSummary = wastefulExpenses.isEmpty()
                 ? "Great job! No wasteful spending detected this month."
-                : aiService.generateDailySummary(totalWasteful, wastefulByCategory,
-                wastefulExpenses.size());
+                : aiService.generateDailySummary(user.getId(), LocalDate.of(year, month, 1),
+                totalWasteful, wastefulByCategory, wastefulExpenses.size());
 
         return WastefulAnalysisResponse.builder()
                 .totalWastefulAmount(totalWasteful)
@@ -161,9 +162,11 @@ public class StockAdvisorService {
 
         List<StockRecommendationResponse.StockSuggestion> suggestions =
                 aiService.generateStockRecommendations(
+                        user.getId(), month, year,
                         investmentAmount, income, spendingPattern);
 
         String rationale = aiService.generateBudgetAdvice(
+                user.getId(), month, year,
                 income, totalExpenses, monthlySaving,
                 investmentAmount,
                 availableForExpense.subtract(totalExpenses));

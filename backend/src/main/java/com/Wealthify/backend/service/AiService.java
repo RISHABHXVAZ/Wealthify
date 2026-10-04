@@ -16,6 +16,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Service
@@ -40,19 +41,61 @@ public class AiService {
     private final Map<String, Long> cacheTimestamps = new ConcurrentHashMap<>();
     private static final long CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
-    private String getCached(String key) {
+    String getCached(String key) {
+        if (key == null) return null;
         Long ts = cacheTimestamps.get(key);
-        if (ts != null && System.currentTimeMillis() - ts < CACHE_TTL_MS) {
-            log.info("Cache hit for key: {}", key);
-            return summaryCache.get(key);
+        if (ts != null) {
+            if (System.currentTimeMillis() - ts < CACHE_TTL_MS) {
+                log.info("Cache hit for key: {}", key);
+                return summaryCache.get(key);
+            } else {
+                summaryCache.remove(key);
+                cacheTimestamps.remove(key);
+            }
         }
         return null;
     }
 
-    private void putCache(String key, String value) {
+    void putCache(String key, String value) {
+        if (key == null || value == null) return;
         summaryCache.put(key, value);
         cacheTimestamps.put(key, System.currentTimeMillis());
         log.info("Cached response for key: {}", key);
+    }
+
+    public void evictUserCache(UUID userId) {
+        if (userId == null) return;
+        String prefix = "user_" + userId + "_";
+        summaryCache.keySet().removeIf(k -> k.startsWith(prefix));
+        cacheTimestamps.keySet().removeIf(k -> k.startsWith(prefix));
+        log.info("Evicted AI cache for user {}", userId);
+    }
+
+    public void clearAllCache() {
+        summaryCache.clear();
+        cacheTimestamps.clear();
+        log.info("Cleared all AI cache");
+    }
+
+    private String buildUserCacheKey(UUID userId, String feature, Object... parts) {
+        if (userId == null) {
+            return null; // Never cache without userId to guarantee cross-user data isolation
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append("user_").append(userId).append("_").append(feature);
+        for (Object part : parts) {
+            sb.append("_").append(part != null ? part.toString().replaceAll("\\s+", "_") : "null");
+        }
+        return sb.toString();
+    }
+
+    // Package-private accessors for testing
+    Map<String, String> getSummaryCache() {
+        return summaryCache;
+    }
+
+    Map<String, Long> getCacheTimestamps() {
+        return cacheTimestamps;
     }
 
     // ─── Retry with exponential backoff ─────────────────────────────────────────
@@ -234,10 +277,12 @@ public class AiService {
         return result;
     }
 
-    public String generateDailySummary(BigDecimal totalSpent,
+    public String generateDailySummary(UUID userId, LocalDate date,
+                                       BigDecimal totalSpent,
                                        Map<String, BigDecimal> byCategory,
                                        int wastefulCount) {
-        String cacheKey = "daily_summary_" + LocalDate.now() + "_" + totalSpent;
+        LocalDate targetDate = date != null ? date : LocalDate.now();
+        String cacheKey = buildUserCacheKey(userId, "daily_summary", targetDate, totalSpent);
         String cached = getCached(cacheKey);
         if (cached != null) return cached;
 
@@ -249,22 +294,28 @@ public class AiService {
                     Wasteful transactions: %d
                     Keep it under 20 words, be direct and helpful.
                     Respond with plain text only, no JSON.
-                    """.formatted(totalSpent, byCategory.toString(), wastefulCount);
+                    """.formatted(totalSpent, byCategory != null ? byCategory.toString() : "{}", wastefulCount);
 
             String result = callGroqWithRetry(prompt);
             putCache(cacheKey, result);
             return result;
         } catch (Exception e) {
             log.error("Daily summary generation failed: {}", e.getMessage());
-            return "Spent ₹" + totalSpent + " today across " + byCategory.size() + " categories.";
+            return "Spent ₹" + totalSpent + " today across " + (byCategory != null ? byCategory.size() : 0) + " categories.";
         }
     }
 
-    public String generateMonthlySummary(BigDecimal totalSpent,
+    public String generateDailySummary(BigDecimal totalSpent,
+                                       Map<String, BigDecimal> byCategory,
+                                       int wastefulCount) {
+        return generateDailySummary(null, LocalDate.now(), totalSpent, byCategory, wastefulCount);
+    }
+
+    public String generateMonthlySummary(UUID userId, int month, int year,
+                                         BigDecimal totalSpent,
                                          BigDecimal income,
                                          Map<String, BigDecimal> byCategory) {
-        String cacheKey = "monthly_summary_" + LocalDate.now().getYear()
-                + "_" + LocalDate.now().getMonthValue() + "_" + totalSpent;
+        String cacheKey = buildUserCacheKey(userId, "monthly_summary", year, month, totalSpent);
         String cached = getCached(cacheKey);
         if (cached != null) return cached;
 
@@ -275,7 +326,7 @@ public class AiService {
                     Monthly income: %s INR
                     Top categories: %s
                     Be direct and insightful. Respond with plain text only, no JSON.
-                    """.formatted(totalSpent, income, byCategory.toString());
+                    """.formatted(totalSpent, income, byCategory != null ? byCategory.toString() : "{}");
 
             String result = callGroqWithRetry(prompt);
             putCache(cacheKey, result);
@@ -286,11 +337,17 @@ public class AiService {
         }
     }
 
-    public List<String> generateSpendingTips(Map<String, BigDecimal> byCategory,
+    public String generateMonthlySummary(BigDecimal totalSpent,
+                                         BigDecimal income,
+                                         Map<String, BigDecimal> byCategory) {
+        return generateMonthlySummary(null, LocalDate.now().getMonthValue(), LocalDate.now().getYear(), totalSpent, income, byCategory);
+    }
+
+    public List<String> generateSpendingTips(UUID userId, int month, int year,
+                                             Map<String, BigDecimal> byCategory,
                                              BigDecimal wastefulAmount,
                                              BigDecimal income) {
-        String cacheKey = "spending_tips_" + LocalDate.now().getYear()
-                + "_" + LocalDate.now().getMonthValue() + "_" + wastefulAmount;
+        String cacheKey = buildUserCacheKey(userId, "spending_tips", year, month, wastefulAmount);
         String cached = getCached(cacheKey);
         if (cached != null) {
             try {
@@ -311,7 +368,7 @@ public class AiService {
                     
                     Respond ONLY with a JSON array of 3 strings, no extra text:
                     ["tip 1", "tip 2", "tip 3"]
-                    """.formatted(byCategory.toString(), wastefulAmount, income);
+                    """.formatted(byCategory != null ? byCategory.toString() : "{}", wastefulAmount, income);
 
             String response = callGroqWithRetry(prompt);
             response = response.trim();
@@ -332,6 +389,12 @@ public class AiService {
                     "Review subscriptions and cancel unused ones."
             );
         }
+    }
+
+    public List<String> generateSpendingTips(Map<String, BigDecimal> byCategory,
+                                             BigDecimal wastefulAmount,
+                                             BigDecimal income) {
+        return generateSpendingTips(null, LocalDate.now().getMonthValue(), LocalDate.now().getYear(), byCategory, wastefulAmount, income);
     }
 
     private String callGroqForText(String prompt) throws Exception {
@@ -358,11 +421,11 @@ public class AiService {
     }
 
     public List<String> generateWastefulRecommendations(
+            UUID userId, int month, int year,
             Map<String, BigDecimal> wastefulByCategory,
             BigDecimal totalWasteful,
             BigDecimal income) {
-        String cacheKey = "wasteful_recs_" + LocalDate.now().getYear()
-                + "_" + LocalDate.now().getMonthValue() + "_" + totalWasteful;
+        String cacheKey = buildUserCacheKey(userId, "wasteful_recs", year, month, totalWasteful);
         String cached = getCached(cacheKey);
         if (cached != null) {
             try {
@@ -383,7 +446,7 @@ public class AiService {
                     
                     Respond ONLY with a JSON array of 4 strings, no extra text:
                     ["tip 1", "tip 2", "tip 3", "tip 4"]
-                    """.formatted(wastefulByCategory.toString(), totalWasteful, income);
+                    """.formatted(wastefulByCategory != null ? wastefulByCategory.toString() : "{}", totalWasteful, income);
 
             String response = callGroqWithRetry(prompt);
             response = response.trim();
@@ -407,12 +470,19 @@ public class AiService {
         }
     }
 
+    public List<String> generateWastefulRecommendations(
+            Map<String, BigDecimal> wastefulByCategory,
+            BigDecimal totalWasteful,
+            BigDecimal income) {
+        return generateWastefulRecommendations(null, LocalDate.now().getMonthValue(), LocalDate.now().getYear(), wastefulByCategory, totalWasteful, income);
+    }
+
     public List<StockRecommendationResponse.StockSuggestion> generateStockRecommendations(
+            UUID userId, int month, int year,
             BigDecimal surplus,
             BigDecimal income,
             Map<String, BigDecimal> spendingPattern) {
-        String cacheKey = "stock_recs_" + LocalDate.now().getYear()
-                + "_" + LocalDate.now().getMonthValue() + "_" + surplus;
+        String cacheKey = buildUserCacheKey(userId, "stock_recs", year, month, surplus);
         String cached = getCached(cacheKey);
         if (cached != null) {
             try {
@@ -445,7 +515,7 @@ public class AiService {
                         "suggestedAllocation": "40%%"
                       }
                     ]
-                    """.formatted(surplus, income, spendingPattern.toString());
+                    """.formatted(surplus, income, spendingPattern != null ? spendingPattern.toString() : "{}");
 
             String response = callGroqWithRetry(prompt);
             response = response.trim();
@@ -485,27 +555,35 @@ public class AiService {
         }
     }
 
-    public String generateGoalPlan(String itemName, BigDecimal targetAmount,
+    public List<StockRecommendationResponse.StockSuggestion> generateStockRecommendations(
+            BigDecimal surplus,
+            BigDecimal income,
+            Map<String, BigDecimal> spendingPattern) {
+        return generateStockRecommendations(null, LocalDate.now().getMonthValue(), LocalDate.now().getYear(), surplus, income, spendingPattern);
+    }
+
+    public String generateGoalPlan(UUID userId, String itemName, BigDecimal targetAmount,
                                    LocalDate targetDate, BigDecimal monthlyIncome,
                                    BigDecimal savingPercentage,
                                    Map<String, BigDecimal> spendingPattern,
                                    BigDecimal avgMonthlyExpense) {
-        String cacheKey = "goal_plan_" + itemName.replaceAll("\\s+", "_")
-                + "_" + targetAmount + "_" + targetDate;
+        String sanitizedItem = itemName != null ? itemName.replaceAll("\\s+", "_") : "item";
+        String cacheKey = buildUserCacheKey(userId, "goal_plan", sanitizedItem, targetAmount, targetDate);
         String cached = getCached(cacheKey);
         if (cached != null) return cached;
 
         try {
-            long monthsRemaining = java.time.temporal.ChronoUnit.MONTHS.between(
-                    LocalDate.now(), targetDate);
-            BigDecimal availableForSaving = monthlyIncome != null
+            long monthsRemaining = targetDate != null
+                    ? java.time.temporal.ChronoUnit.MONTHS.between(LocalDate.now(), targetDate)
+                    : 0;
+            BigDecimal availableForSaving = monthlyIncome != null && savingPercentage != null
                     ? monthlyIncome.multiply(savingPercentage)
                     .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP)
                     : BigDecimal.ZERO;
-            BigDecimal requiredPerMonth = monthsRemaining > 0
+            BigDecimal requiredPerMonth = monthsRemaining > 0 && targetAmount != null
                     ? targetAmount.divide(BigDecimal.valueOf(monthsRemaining),
                     2, RoundingMode.HALF_UP)
-                    : targetAmount;
+                    : (targetAmount != null ? targetAmount : BigDecimal.ZERO);
 
             String prompt = """
                 An Indian college student wants to buy: "%s"
@@ -524,9 +602,9 @@ public class AiService {
                 Include: achievability, required monthly saving, specific spending cuts needed.
                 """.formatted(
                     itemName, targetAmount, targetDate, monthsRemaining,
-                    monthlyIncome, savingPercentage.doubleValue(),
+                    monthlyIncome, savingPercentage != null ? savingPercentage.doubleValue() : 0.0,
                     availableForSaving, avgMonthlyExpense,
-                    spendingPattern.toString(), requiredPerMonth);
+                    spendingPattern != null ? spendingPattern.toString() : "{}", requiredPerMonth);
 
             String result = callGroqWithRetry(prompt);
             putCache(cacheKey, result);
@@ -537,12 +615,20 @@ public class AiService {
         }
     }
 
-    public String generateBudgetAdvice(BigDecimal income, BigDecimal spent,
+    public String generateGoalPlan(String itemName, BigDecimal targetAmount,
+                                   LocalDate targetDate, BigDecimal monthlyIncome,
+                                   BigDecimal savingPercentage,
+                                   Map<String, BigDecimal> spendingPattern,
+                                   BigDecimal avgMonthlyExpense) {
+        return generateGoalPlan(null, itemName, targetAmount, targetDate, monthlyIncome, savingPercentage, spendingPattern, avgMonthlyExpense);
+    }
+
+    public String generateBudgetAdvice(UUID userId, int month, int year,
+                                       BigDecimal income, BigDecimal spent,
                                        BigDecimal savingAmount,
                                        BigDecimal investmentAmount,
                                        BigDecimal available) {
-        String cacheKey = "budget_advice_" + LocalDate.now().getYear()
-                + "_" + LocalDate.now().getMonthValue() + "_" + spent;
+        String cacheKey = buildUserCacheKey(userId, "budget_advice", year, month, spent);
         String cached = getCached(cacheKey);
         if (cached != null) return cached;
 
@@ -565,5 +651,12 @@ public class AiService {
             log.error("Budget advice failed: {}", e.getMessage());
             return "Stay on track with your budget to meet your saving goals.";
         }
+    }
+
+    public String generateBudgetAdvice(BigDecimal income, BigDecimal spent,
+                                       BigDecimal savingAmount,
+                                       BigDecimal investmentAmount,
+                                       BigDecimal available) {
+        return generateBudgetAdvice(null, LocalDate.now().getMonthValue(), LocalDate.now().getYear(), income, spent, savingAmount, investmentAmount, available);
     }
 }

@@ -22,6 +22,7 @@ public class Expense {
 
     @ManyToOne
     @JoinColumn(name = "user_id", nullable = false)
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private User user;
 
     @Column(nullable = false)
