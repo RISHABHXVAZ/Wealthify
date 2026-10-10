@@ -1,0 +1,46 @@
+# Build output & caches
+target/
+build/
+*.class
+
+# Version control
+.git/
+.gitignore
+.gitattributes
+
+# Environment files & local secrets
+.env
+.env.*
+*.env
+application-local.properties
+src/main/resources/application-local.properties
+*.local.properties
+
+# IDE & Editor files
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+.settings/
+.classpath
+.project
+.factorypath
+.springBeans
+.sts4-cache
+.apt_generated
+nbproject/
+.nb-gradle/
+
+# Operating system files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Miscellaneous temporary files
+HELP.md
+*.tmp
+*.bak
