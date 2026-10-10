@@ -4,18 +4,23 @@ import com.Wealthify.backend.dto.ExpenseRequest;
 import com.Wealthify.backend.dto.ExpenseResponse;
 import com.Wealthify.backend.service.ExpenseService;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/expenses")
 @RequiredArgsConstructor
+@Validated
 public class ExpenseController {
 
     private final ExpenseService expenseService;
@@ -40,16 +45,36 @@ public class ExpenseController {
     public ResponseEntity<List<ExpenseResponse>> getByDate(
             @AuthenticationPrincipal UserDetails userDetails,
             @PathVariable String date) {
+        LocalDate parsedDate;
+        try {
+            parsedDate = LocalDate.parse(date);
+        } catch (DateTimeParseException ex) {
+            throw new IllegalArgumentException("Invalid date format. Expected YYYY-MM-DD");
+        }
         return ResponseEntity.ok(
                 expenseService.getExpensesByDate(
-                        userDetails.getUsername(), LocalDate.parse(date)));
+                        userDetails.getUsername(), parsedDate));
     }
 
     @GetMapping("/month/{year}/{month}")
     public ResponseEntity<List<ExpenseResponse>> getByMonth(
             @AuthenticationPrincipal UserDetails userDetails,
-            @PathVariable int year,
-            @PathVariable int month) {
+            @PathVariable
+            @Min(value = 1970, message = "Year must be between 1970 and 2100")
+            @Max(value = 2100, message = "Year must be between 1970 and 2100")
+            int year,
+            @PathVariable
+            @Min(value = 1, message = "Month must be between 1 and 12")
+            @Max(value = 12, message = "Month must be between 1 and 12")
+            int month) {
+
+        if (month < 1 || month > 12) {
+            throw new IllegalArgumentException("Month must be between 1 and 12");
+        }
+        if (year < 1970 || year > 2100) {
+            throw new IllegalArgumentException("Year must be between 1970 and 2100");
+        }
+
         return ResponseEntity.ok(
                 expenseService.getExpensesByMonth(
                         userDetails.getUsername(), month, year));

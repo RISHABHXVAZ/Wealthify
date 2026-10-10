@@ -1,6 +1,9 @@
 package com.Wealthify.backend.exception;
 
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.MessageSourceResolvable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -8,8 +11,10 @@ import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
+import java.time.DateTimeException;
 import java.util.Map;
 
 /**
@@ -71,6 +76,33 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, String>> handleMessageNotReadable(HttpMessageNotReadableException ex) {
         log.warn("Malformed HTTP request body: {}", ex.getMessage());
         return ResponseEntity.badRequest().body(Map.of("message", "Malformed or unreadable request body"));
+    }
+
+    @ExceptionHandler(HandlerMethodValidationException.class)
+    public ResponseEntity<Map<String, String>> handleHandlerMethodValidation(HandlerMethodValidationException ex) {
+        String message = ex.getParameterValidationResults().stream()
+                .flatMap(r -> r.getResolvableErrors().stream())
+                .findFirst()
+                .map(MessageSourceResolvable::getDefaultMessage)
+                .orElse("Invalid request parameter");
+        log.warn("Handler method validation failed: {}", message);
+        return ResponseEntity.badRequest().body(Map.of("message", message));
+    }
+
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<Map<String, String>> handleConstraintViolation(ConstraintViolationException ex) {
+        String message = ex.getConstraintViolations().stream()
+                .findFirst()
+                .map(ConstraintViolation::getMessage)
+                .orElse("Invalid request parameter");
+        log.warn("Constraint violation: {}", message);
+        return ResponseEntity.badRequest().body(Map.of("message", message));
+    }
+
+    @ExceptionHandler(DateTimeException.class)
+    public ResponseEntity<Map<String, String>> handleDateTimeException(DateTimeException ex) {
+        log.warn("Date/time validation failed: {}", ex.getMessage());
+        return ResponseEntity.badRequest().body(Map.of("message", "Invalid date parameter"));
     }
 
     @ExceptionHandler(RuntimeException.class)
