@@ -31,6 +31,15 @@ public class ExpenseService {
                 .orElseThrow(() -> new BusinessException("User not found"));
 
         // Step 1: Handle split expense
+        if (request.getSplitCount() != null) {
+            if (request.getSplitCount() < 1) {
+                throw new IllegalArgumentException("Split count must be at least 1");
+            }
+            if (request.getSplitCount() > 100) {
+                throw new IllegalArgumentException("Split count cannot exceed 100");
+            }
+        }
+
         BigDecimal finalAmount = request.getAmount();
         if (request.getSplitCount() != null && request.getSplitCount() > 1) {
             finalAmount = request.getAmount()

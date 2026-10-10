@@ -32,7 +32,7 @@ const AddExpense = () => {
             await fetchBudget();
             setForm({ amount: '', description: '', expenseDate: '', splitCount: '' });
         } catch (err) {
-            setError('Failed to add expense. Please try again.');
+            setError(err.response?.data?.message || 'Failed to add expense. Please try again.');
         } finally {
             setLoading(false);
         }
@@ -93,7 +93,8 @@ const AddExpense = () => {
                             onChange={e => setForm({ ...form, splitCount: e.target.value })}
                             className="w-full bg-gray-800 text-white rounded-xl px-4 py-3 border border-gray-700 focus:border-green-500 focus:outline-none"
                             placeholder="e.g. 4 (if splitting with 3 friends)"
-                            min="2"
+                            min="1"
+                            max="100"
                         />
                         {form.splitCount > 1 && form.amount && (
                             <p className="text-green-400 text-xs mt-1">
