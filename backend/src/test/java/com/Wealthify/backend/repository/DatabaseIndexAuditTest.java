@@ -7,6 +7,8 @@ import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import com.Wealthify.backend.config.AbstractDatabaseIsolationTest;
+import io.zonky.test.db.AutoConfigureEmbeddedDatabase;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -21,8 +23,9 @@ import java.util.*;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
-@ActiveProfiles("local")
-class DatabaseIndexAuditTest {
+@ActiveProfiles("test")
+@AutoConfigureEmbeddedDatabase(provider = AutoConfigureEmbeddedDatabase.DatabaseProvider.ZONKY)
+class DatabaseIndexAuditTest extends AbstractDatabaseIsolationTest {
 
     @Autowired
     private ExpenseRepository expenseRepository;

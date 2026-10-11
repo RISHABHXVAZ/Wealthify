@@ -12,6 +12,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 
+import com.Wealthify.backend.config.AbstractDatabaseIsolationTest;
+import io.zonky.test.db.AutoConfigureEmbeddedDatabase;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.*;
@@ -26,8 +28,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  * @Transactional boundary in GoalService.updateGoalSaving to prevent lost updates under race conditions.
  */
 @SpringBootTest
-@ActiveProfiles("local")
-class GoalConcurrencyIntegrationTest {
+@ActiveProfiles("test")
+@AutoConfigureEmbeddedDatabase(provider = AutoConfigureEmbeddedDatabase.DatabaseProvider.ZONKY)
+class GoalConcurrencyIntegrationTest extends AbstractDatabaseIsolationTest {
 
     @Autowired
     private GoalService goalService;

@@ -12,6 +12,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import com.Wealthify.backend.config.AbstractDatabaseIsolationTest;
+import io.zonky.test.db.AutoConfigureEmbeddedDatabase;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
@@ -26,12 +28,13 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
-@ActiveProfiles("local")
+@ActiveProfiles("test")
+@AutoConfigureEmbeddedDatabase(provider = AutoConfigureEmbeddedDatabase.DatabaseProvider.ZONKY)
 @TestPropertySource(properties = {
         "spring.jpa.properties.hibernate.generate_statistics=true",
         "spring.jpa.show-sql=true"
 })
-class ExpenseCategoryFetchingPerformanceTest {
+class ExpenseCategoryFetchingPerformanceTest extends AbstractDatabaseIsolationTest {
 
     @Autowired
     private ExpenseService expenseService;

@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import io.zonky.test.db.AutoConfigureEmbeddedDatabase;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -28,8 +29,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 6. Public authentication endpoints (/api/auth/**) remain accessible.
  */
 @SpringBootTest
-@ActiveProfiles("local")
-class ActuatorSecurityIntegrationTest {
+@ActiveProfiles("test")
+@AutoConfigureEmbeddedDatabase(provider = AutoConfigureEmbeddedDatabase.DatabaseProvider.ZONKY)
+class ActuatorSecurityIntegrationTest extends AbstractDatabaseIsolationTest {
 
     @Autowired
     private WebApplicationContext context;
