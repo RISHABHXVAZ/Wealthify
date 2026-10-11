@@ -30,9 +30,9 @@ public class CategorySeeder implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
-        if (categoryRepository.count() > 0) {
-            log.info("Categories table already seeded ({} rows) - skipping.",
-                    categoryRepository.count());
+        long count = categoryRepository.count();
+        if (count > 0) {
+            log.info("Categories table already seeded ({} rows) - skipping.", count);
             return;
         }
 
