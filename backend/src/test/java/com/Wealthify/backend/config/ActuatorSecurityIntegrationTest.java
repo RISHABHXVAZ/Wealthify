@@ -157,11 +157,77 @@ class ActuatorSecurityIntegrationTest {
                 .isEqualTo("health");
         org.assertj.core.api.Assertions.assertThat(props.getProperty("management.endpoint.health.probes.enabled"))
                 .isEqualTo("true");
+        org.assertj.core.api.Assertions.assertThat(props.getProperty("management.endpoint.health.group.readiness.include"))
+                .isEqualTo("readinessState,db");
         org.assertj.core.api.Assertions.assertThat(props.getProperty("management.endpoint.health.show-details"))
                 .isEqualTo("never");
         org.assertj.core.api.Assertions.assertThat(props.getProperty("management.endpoint.health.show-components"))
                 .isEqualTo("never");
         org.assertj.core.api.Assertions.assertThat(props.getProperty("management.health.mail.enabled"))
                 .isEqualTo("false");
+    }
+
+    @Test
+    @DisplayName("OPS-01 Test 8: Readiness group includes db and readinessState; liveness excludes db")
+    void testHealthGroupContributorMembership() {
+        org.springframework.boot.health.actuate.endpoint.HealthEndpointGroups groups =
+                context.getBean(org.springframework.boot.health.actuate.endpoint.HealthEndpointGroups.class);
+
+        org.springframework.boot.health.actuate.endpoint.HealthEndpointGroup readiness = groups.get("readiness");
+        org.assertj.core.api.Assertions.assertThat(readiness).isNotNull();
+        org.assertj.core.api.Assertions.assertThat(readiness.isMember("db")).isTrue();
+        org.assertj.core.api.Assertions.assertThat(readiness.isMember("readinessState")).isTrue();
+        org.assertj.core.api.Assertions.assertThat(readiness.isMember("diskSpace")).isFalse();
+
+        org.springframework.boot.health.actuate.endpoint.HealthEndpointGroup liveness = groups.get("liveness");
+        org.assertj.core.api.Assertions.assertThat(liveness).isNotNull();
+        org.assertj.core.api.Assertions.assertThat(liveness.isMember("db")).isFalse();
+        org.assertj.core.api.Assertions.assertThat(liveness.isMember("livenessState")).isTrue();
+    }
+
+    @Test
+    @DisplayName("OPS-01 Test 9: Readiness returns 503 DOWN when database is unavailable; liveness remains 200 UP")
+    void testReadinessDownWhenDatabaseUnavailable() throws Exception {
+        org.springframework.boot.health.registry.HealthContributorRegistry registry =
+                context.getBean(org.springframework.boot.health.registry.HealthContributorRegistry.class);
+        org.springframework.boot.health.contributor.HealthContributor originalDb = registry.getContributor("db");
+
+        try {
+            // Simulate database failure by replacing db contributor with a DOWN indicator
+            registry.unregisterContributor("db");
+            registry.registerContributor("db", (org.springframework.boot.health.contributor.HealthIndicator) () ->
+                    org.springframework.boot.health.contributor.Health.down()
+                            .withDetail("secret_db_error", "FATAL: connection to database failed")
+                            .build());
+
+            // 1. Readiness probe must report DOWN (HTTP 503 Service Unavailable)
+            mockMvc.perform(get("/actuator/health/readiness"))
+                    .andExpect(status().isServiceUnavailable())
+                    .andExpect(jsonPath("$.status", is("DOWN")))
+                    .andExpect(jsonPath("$.components").doesNotExist())
+                    .andExpect(jsonPath("$.details").doesNotExist())
+                    .andExpect(jsonPath("$.secret_db_error").doesNotExist());
+
+            // 2. Liveness probe must remain unaffected (HTTP 200 OK, UP) to prevent container restart loops
+            mockMvc.perform(get("/actuator/health/liveness"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status", is("UP")))
+                    .andExpect(jsonPath("$.components").doesNotExist())
+                    .andExpect(jsonPath("$.details").doesNotExist());
+
+            // 3. Overall health must report DOWN (HTTP 503) with sanitized output
+            mockMvc.perform(get("/actuator/health"))
+                    .andExpect(status().isServiceUnavailable())
+                    .andExpect(jsonPath("$.status", is("DOWN")))
+                    .andExpect(jsonPath("$.components").doesNotExist())
+                    .andExpect(jsonPath("$.details").doesNotExist())
+                    .andExpect(jsonPath("$.secret_db_error").doesNotExist());
+        } finally {
+            // Restore original database health contributor
+            registry.unregisterContributor("db");
+            if (originalDb != null) {
+                registry.registerContributor("db", originalDb);
+            }
+        }
     }
 }
