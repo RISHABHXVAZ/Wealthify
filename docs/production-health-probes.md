@@ -1,179 +1,134 @@
-# Production Health and Readiness Probes Deployment Note (OPS-01)
+# Production Health and Readiness Probes Deployment Runbook (OPS-01)
 
 ## Overview
 
-This deployment note specifies the operational requirements, endpoints, ports, semantics, and recommended probe configurations for the Wealthify backend container's Spring Boot Actuator liveness and readiness probes.
+This runbook specifies the production deployment architecture, health probe semantics, port binding, and configuration procedures for the Wealthify backend on **Render**, paired with the frontend on **Vercel** and the PostgreSQL database on **Neon Cloud**.
 
-### Status
+### Target Deployment Topology
 
-- **Application & Container Configuration**: **VERIFIED IN REPOSITORY**
-  - Application port, endpoint exposure, health contributor groups, security filter exceptions, sanitized output, and non-root Docker runtime are fully implemented and verified via automated integration tests.
-- **Hosting Platform Configuration**: **PENDING**
-  - The repository does not currently contain provider-specific deployment manifests (such as Kubernetes manifests, Helm charts, Docker Compose, AWS ECS task definitions, Google Cloud Run service YAML, or Render service manifests).
-  - Platform-level probe wiring must be configured on the selected hosting provider according to the specifications in this document.
-
----
-
-## Verified In-Repository Configuration
-
-### 1. Container & Network Specification
-
-| Parameter | Value | Source / Evidence |
-| :--- | :--- | :--- |
-| **Runtime Image** | `eclipse-temurin:21-jre-jammy` | [`backend/Dockerfile`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/Dockerfile#L7) |
-| **Runtime User** | `wealthify:wealthify` (UID/GID 1001) | [`backend/Dockerfile`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/Dockerfile#L9-L16) |
-| **Application Port** | `8080` (TCP, HTTP) | [`application.properties`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/src/main/resources/application.properties#L5), [`Dockerfile`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/Dockerfile#L18) |
-| **Entrypoint** | `["java", "-jar", "app.jar"]` | [`backend/Dockerfile`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/Dockerfile#L19) |
-
-### 2. Spring Boot Actuator Properties
-
-Configured in [`backend/src/main/resources/application.properties`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/src/main/resources/application.properties#L73-L80):
-
-```properties
-# Actuator & Production Health / Readiness Endpoints (OPS-01)
-management.endpoints.web.exposure.include=health
-management.endpoint.health.probes.enabled=true
-management.endpoint.health.group.readiness.include=readinessState,db
-management.endpoint.health.show-details=never
-management.endpoint.health.show-components=never
-management.health.mail.enabled=false
-```
-
-### 3. Security & Information-Disclosure Protections
-
-Configured in [`backend/src/main/java/com/Wealthify/backend/config/SecurityConfig.java`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/src/main/java/com/Wealthify/backend/config/SecurityConfig.java#L52-L56):
-
-- **Public Access**: Unauthenticated `GET` requests to `/actuator/health` and `/actuator/health/**` are permitted without JWT tokens so orchestrators and load balancers can probe health without credentials.
-- **Sensitive Endpoints Blocked**: All other Actuator endpoints (`/actuator/env`, `/actuator/beans`, `/actuator/metrics`, `/actuator/configprops`, `/actuator/loggers`, `/actuator/heapdump`, `/actuator/threaddump`) require authentication and return `403 Forbidden` for unauthenticated requests.
-- **Sanitized Response Bodies**: `show-details=never` and `show-components=never` ensure probe responses return solely `{"status":"UP"}` or `{"status":"DOWN"}` without leaking database connection URLs, hostnames, usernames, or internal stack traces.
-- **Mail Health Contributor Disabled**: `management.health.mail.enabled=false` prevents outbound Gmail SMTP connection attempts from delaying or failing health checks.
-
----
-
-## Probe Endpoints & Semantics
-
-### 1. Liveness Probe (`/actuator/health/liveness`)
-
-- **Path**: `/actuator/health/liveness`
-- **HTTP Method**: `GET`
-- **Target Port**: `8080`
-- **Contributors Included**: `livenessState`
-- **Database Dependency**: **EXCLUDED** (`db: false`)
-- **Success Criteria**: HTTP `200 OK` (`{"status":"UP"}`)
-- **Failure Criteria**: HTTP `503 Service Unavailable` (`{"status":"DOWN"}`)
-- **Operational Purpose**:
-  - Determines whether the JVM process is healthy and the Spring ApplicationContext is responsive.
-  - **Must not fail during database outages**: Because database checks are excluded, transient database connectivity loss or planned database maintenance will **not** trigger container restarts or crash loops.
-
-### 2. Readiness Probe (`/actuator/health/readiness`)
-
-- **Path**: `/actuator/health/readiness`
-- **HTTP Method**: `GET`
-- **Target Port**: `8080`
-- **Contributors Included**: `readinessState`, `db`
-- **Database Dependency**: **INCLUDED** (`db: true`)
-- **Success Criteria**: HTTP `200 OK` (`{"status":"UP"}`)
-- **Failure Criteria**: HTTP `503 Service Unavailable` (`{"status":"DOWN"}`)
-- **Operational Purpose**:
-  - Determines whether the application instance is ready to receive incoming HTTP traffic from users.
-  - If the database is unreachable or down, readiness immediately reports `503 DOWN`, instructing the orchestrator/load-balancer to pull the container from active traffic routing until database connectivity recovers.
-
----
-
-## Required Platform Probe Settings (Pending Orchestrator Setup)
-
-When deploying Wealthify to an orchestrator or container platform, configure the probes with the following parameters:
-
-### Recommended Timing & Thresholds
-
-| Parameter | Liveness Probe | Readiness Probe | Rational |
+| Component | Hosting Platform | Deployment Artifact | Primary Network / Port |
 | :--- | :--- | :--- | :--- |
-| **Path** | `/actuator/health/liveness` | `/actuator/health/readiness` | Standard Spring Boot probe endpoints |
-| **Port** | `8080` | `8080` | Internal container port |
-| **Initial Delay Seconds** | `35s` - `45s` | `15s` - `20s` | Allows JVM warmup, classpath scanning, and Hibernate schema validation |
-| **Period / Interval Seconds** | `15s` | `10s` | Balances rapid failure detection with low query overhead |
-| **Timeout Seconds** | `5s` | `5s` | Avoids premature failure on momentary CPU spikes |
-| **Failure Threshold** | `3` (failures before restart) | `2` - `3` (failures before de-routing) | Avoids restarting containers on transient blips |
-| **Success Threshold** | `1` | `1` | Fast restoration upon recovery |
+| **Frontend** | **Vercel** | SPA build ([`vercel.json`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/frontend/src/vercel.json)) | Client-side routing to Render backend |
+| **Backend** | **Render** | Docker container ([`backend/Dockerfile`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/Dockerfile)) | HTTP port `${PORT:8080}` |
+| **Database** | **Neon Cloud** | Serverless PostgreSQL | TLS connection via `SPRING_DATASOURCE_URL` |
+
+### Configuration Status
+
+- **Application & Container**: **VERIFIED IN REPOSITORY**
+  - Actuator probe groups, port binding (`${PORT:8080}`), security filter permit, output sanitization, and non-root execution (`wealthify:wealthify`) are committed and verified by automated integration tests.
+- **Render Dashboard Settings**: **PENDING OPERATOR CONFIGURATION**
+  - The repository does not contain a declarative `render.yaml` Blueprint. The Health Check Path must be verified and configured directly in the Render Dashboard by the service operator.
 
 ---
 
-## Reference Deployment Manifests
+## Port Configuration & Dynamic Port Binding
 
-The following reference snippets illustrate how to bind the verified probe endpoints across candidate platforms once the hosting target is confirmed.
+Render automatically provisions and assigns an internal listening port via the `PORT` environment variable (commonly defaulting to `10000` or a dynamically assigned port).
 
-### 1. Kubernetes Deployment Spec (Reference)
-
-```yaml
-spec:
-  containers:
-    - name: wealthify-backend
-      image: <YOUR_REGISTRY>/wealthify-backend:<TAG>
-      ports:
-        - containerPort: 8080
-          name: http
-      securityContext:
-        runAsNonRoot: true
-        runAsUser: 1001
-        runAsGroup: 1001
-        readOnlyRootFilesystem: false
-        allowPrivilegeEscalation: false
-      livenessProbe:
-        httpGet:
-          path: /actuator/health/liveness
-          port: 8080
-        initialDelaySeconds: 40
-        periodSeconds: 15
-        timeoutSeconds: 5
-        failureThreshold: 3
-      readinessProbe:
-        httpGet:
-          path: /actuator/health/readiness
-          port: 8080
-        initialDelaySeconds: 20
-        periodSeconds: 10
-        timeoutSeconds: 5
-        failureThreshold: 2
-        successThreshold: 1
+In [`backend/src/main/resources/application.properties`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/src/main/resources/application.properties#L4-L5):
+```properties
+# Server Config
+server.port=${PORT:8080}
 ```
 
-### 2. Docker Compose (Reference for Container Healthcheck)
+### Operational Behavior
+- **On Render**: When Render injects the `PORT` environment variable at container startup, the Spring Boot embedded Tomcat server automatically binds to `${PORT}`, allowing Render's routing mesh to forward traffic to the container.
+- **Local Development & Standalone Docker**: When the `PORT` environment variable is unset, the application safely defaults to port `8080`, preserving compatibility with local development, `./mvnw spring-boot:run`, and local `docker run` workflows.
 
-```yaml
-services:
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    ports:
-      - "8080:8080"
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/actuator/health/readiness || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
-```
+---
 
-### 3. Cloud Run / Render / AWS ECS / Generic PaaS (Reference)
+## Render Health Check Path Configuration
 
-- **Health Check Path**: `/actuator/health/readiness` (for unified routing and health checks on platforms supporting a single health check path)
-- **Health Check Port**: `8080`
-- **Grace Period / Start Period**: `30` - `45` seconds
+### Instructions for the Render Dashboard
+
+To configure health checks for the Wealthify backend web service:
+
+1. Log in to the [Render Dashboard](https://dashboard.render.com).
+2. Select your backend Web Service (e.g., `wealthify-backend`).
+3. In the left-hand navigation menu, click **Settings**.
+4. Scroll down to the **Health Check Path** field.
+5. Enter:
+   ```text
+   /actuator/health/readiness
+   ```
+6. Click **Save Changes**.
+
+> [!IMPORTANT]
+> This action must be executed in the Render Dashboard. The repository does not manage cloud dashboard settings directly; this runbook documents the required specification.
+
+---
+
+## Single-Path Model vs. Dual Probes: Architecture & Trade-Offs
+
+### 1. Render's Single Health Check Model
+
+The Wealthify backend exposes two distinct Actuator probe endpoints:
+- `/actuator/health/liveness` (JVM & ApplicationContext liveness; **excludes** database)
+- `/actuator/health/readiness` (Traffic readiness; **includes** database connectivity)
+
+**Render evaluates a single HTTP health check path.** Render does **not** independently poll both liveness and readiness probes concurrently (unlike Kubernetes).
+
+- **Deployment Phase (Zero-Downtime Rollouts)**:
+  During a deployment, Render spins up the new container and polls the configured Health Check Path. Render will only switch live user traffic to the new instance once the endpoint returns HTTP `200 OK`. If the check fails or times out, the deployment fails and old traffic remains on the previous instance.
+- **Runtime Phase (Continuous Health Monitoring)**:
+  Once live, Render continuously issues periodic HTTP `GET` requests to the configured path. If consecutive requests fail, Render marks the instance unhealthy, stops routing user requests to it, and will restart the container instance.
+
+---
+
+### 2. Evaluation: Why `/actuator/health/readiness` is Recommended
+
+We recommend setting Render's Health Check Path to `/actuator/health/readiness` rather than `/actuator/health/liveness` or the root `/actuator/health`:
+
+| Health Endpoint | Components Checked | Pros | Cons on Render |
+| :--- | :--- | :--- | :--- |
+| **`/actuator/health/readiness`** *(Recommended)* | `readinessState`, `db` | Verifies both Spring Boot application initialization AND database connectivity. Prevents routing users to an instance that cannot execute transactions or auth. | If the database experiences a prolonged outage, Render will mark the service unhealthy and restart the container. |
+| **`/actuator/health/liveness`** | `livenessState` (JVM only) | Will not restart the container during database outages. | Will report `200 OK` even if database connectivity is completely down, causing Render to route user requests into failing 500 errors. |
+| **`/actuator/health`** | All active contributors | Checks overall health. | Includes diskSpace and other contributors that are unnecessary for routing decisions. |
+
+---
+
+### 3. The Operational Trade-Off: Prolonged Database Outages
+
+Operators must understand the trade-off of including database health in Render's single health check path:
+
+1. **Detection of Outages**:
+   If the Neon PostgreSQL database is unreachable (e.g., network partition, SSL handshake failure, connection pool exhaustion, or database maintenance), `/actuator/health/readiness` immediately returns HTTP `503 Service Unavailable` (`{"status":"DOWN"}`).
+2. **Render Restart Consequence**:
+   Because Render relies on this single path, prolonged 503 responses will cause Render to de-route traffic and restart the web service container.
+3. **Recovery Dynamics**:
+   When the container restarts, it will boot up and re-probe database connectivity. If the database is still offline, the container will remain unhealthy until database connectivity is restored.
+4. **Decoupled Internal Liveness**:
+   Within the application code, liveness (`/actuator/health/liveness`) deliberately excludes `db` (`db: false`). If the application is ever migrated to an orchestrator that supports independent liveness and readiness probes (such as Kubernetes or AWS ECS), liveness will remain `200 UP` during database outages, completely avoiding container restart loops while readiness correctly halts traffic routing.
+
+---
+
+## Information-Disclosure & Security Verification
+
+All health endpoints are hardened against information leakage in [`SecurityConfig.java`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/src/main/java/com/Wealthify/backend/config/SecurityConfig.java) and [`application.properties`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/src/main/resources/application.properties):
+
+1. **Sanitized Output**:
+   ```properties
+   management.endpoint.health.show-details=never
+   management.endpoint.health.show-components=never
+   ```
+   Both HTTP 200 (`UP`) and HTTP 503 (`DOWN`) responses return minimal JSON (`{"status":"UP"}` or `{"status":"DOWN"}`) without exposing database URLs, hostnames, usernames, disk space metrics, or internal stack traces.
+2. **Access Control**:
+   - `/actuator/health` and `/actuator/health/**` are accessible without JWT tokens to permit Render's proxy to probe health.
+   - All sensitive Actuator endpoints (`/actuator/env`, `/actuator/beans`, `/actuator/metrics`, `/actuator/configprops`, `/actuator/heapdump`) require authentication and reject unauthenticated requests with HTTP `403 Forbidden`.
+3. **Mail Contributor Disabled**:
+   `management.health.mail.enabled=false` prevents outbound Gmail SMTP connections from blocking or failing the health probe.
 
 ---
 
 ## Verification Evidence from Repository Tests
 
-The probe configurations and security behaviors are verified by automated integration tests in [`ActuatorSecurityIntegrationTest.java`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/src/test/java/com/Wealthify/backend/config/ActuatorSecurityIntegrationTest.java):
+All probe semantics, security configurations, and dynamic port behaviors are verified by automated integration tests in [`ActuatorSecurityIntegrationTest.java`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/src/test/java/com/Wealthify/backend/config/ActuatorSecurityIntegrationTest.java):
 
-1. **Test 1 & 2**: Public `/actuator/health` returns HTTP 200 with `status: UP` and no leaked component metadata.
-2. **Test 3a & 3b**: Public `/actuator/health/liveness` and `/actuator/health/readiness` return HTTP 200 with `status: UP`.
-3. **Test 4**: Sensitive Actuator endpoints (`/actuator/env`, `/actuator/beans`, `/actuator/metrics`, etc.) return HTTP 403 Forbidden.
-4. **Test 5 & 6**: Standard API authorization (`/api/expenses`, `/api/goals`) and public authentication (`/api/auth/**`) remain intact.
-5. **Test 7**: Production `application.properties` settings match expected security and group definitions.
-6. **Test 8**: Actuator `readiness` group contains `db` and `readinessState`; `liveness` group excludes `db`.
-7. **Test 9**: Simulating database unavailability proves:
-   - `/actuator/health/readiness` fails with HTTP 503 `status: DOWN`.
-   - `/actuator/health/liveness` succeeds with HTTP 200 `status: UP`.
-   - Both responses remain strictly sanitized without internal error leakage.
+- **Port Configuration**: Asserts `server.port` equals `${PORT:8080}` and resolves to `8080` when `PORT` is unset.
+- **Probe Accessibility**: Asserts `/actuator/health/readiness` and `/actuator/health/liveness` are reachable without authentication.
+- **Output Sanitization**: Asserts details and component trees are suppressed.
+- **Sensitive Actuator Protection**: Asserts `/actuator/env`, `/actuator/beans`, etc. return HTTP 403 Forbidden.
+- **Database Outage Simulation**: Replaces the `db` contributor with a simulated failure and verifies:
+  - `/actuator/health/readiness` returns HTTP 503 `status: DOWN`.
+  - `/actuator/health/liveness` remains HTTP 200 `status: UP`.
+  - No sensitive database exception details are leaked in the response.

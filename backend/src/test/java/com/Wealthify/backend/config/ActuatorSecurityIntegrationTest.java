@@ -153,6 +153,10 @@ class ActuatorSecurityIntegrationTest {
         org.springframework.core.io.ClassPathResource resource = new org.springframework.core.io.ClassPathResource("application.properties");
         java.util.Properties props = org.springframework.core.io.support.PropertiesLoaderUtils.loadProperties(resource);
 
+        org.assertj.core.api.Assertions.assertThat(props.getProperty("server.port"))
+                .isEqualTo("${PORT:8080}");
+        org.assertj.core.api.Assertions.assertThat(context.getEnvironment().getProperty("server.port"))
+                .isEqualTo("8080");
         org.assertj.core.api.Assertions.assertThat(props.getProperty("management.endpoints.web.exposure.include"))
                 .isEqualTo("health");
         org.assertj.core.api.Assertions.assertThat(props.getProperty("management.endpoint.health.probes.enabled"))
