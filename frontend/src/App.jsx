@@ -1,5 +1,6 @@
 import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 import ProtectedRoute from './components/ProtectedRoute';
 import Navbar from './components/Navbar';
 import BackendStatusBanner from './components/BackendStatusBanner';
@@ -36,6 +37,7 @@ const Layout = ({ children }) => (
 function App() {
   return (
     <BrowserRouter>
+      <SpeedInsights />
       <BackendStatusBanner />
       <Suspense fallback={<PageLoader />}>
         <Routes>
