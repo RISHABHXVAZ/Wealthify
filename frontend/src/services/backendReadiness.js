@@ -1,5 +1,4 @@
 import axios from 'axios';
-import { API_BASE_URL } from '../api/axios.js';
 
 export const ReadinessStatus = {
   IDLE: 'idle',
@@ -9,23 +8,48 @@ export const ReadinessStatus = {
   EXHAUSTED: 'exhausted',
 };
 
+export const DEFAULT_API_BASE_URL =
+  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) || 'http://localhost:8080';
+
 class BackendReadinessManager {
   constructor(options = {}) {
-    this.baseURL = options.baseURL || API_BASE_URL;
+    this.baseURL = options.baseURL || DEFAULT_API_BASE_URL;
     this.endpoint = options.endpoint || '/actuator/health/readiness';
-    this.maxRetries = options.maxRetries ?? 6;
+    // Extended retry budget (14 retries comfortably covers Render free-tier cold-start timelines up to ~180s)
+    this.maxRetries = options.maxRetries ?? 14;
     this.initialDelayMs = options.initialDelayMs ?? 2000;
     this.maxDelayMs = options.maxDelayMs ?? 8000;
     this.timeoutMs = options.timeoutMs ?? 10000;
+    // Render Free spins down after 15 min of inactivity; mark stale after 10 min
+    this.staleThresholdMs = options.staleThresholdMs ?? (10 * 60 * 1000);
     this.status = ReadinessStatus.IDLE;
     this.inFlightPromise = null;
     this.listeners = new Set();
     this.abortController = null;
     this.retryCount = 0;
+    this.lastReadyTime = null;
   }
 
   getStatus() {
     return this.status;
+  }
+
+  getLastReadyTime() {
+    return this.lastReadyTime;
+  }
+
+  isStale(now = Date.now()) {
+    if (this.status !== ReadinessStatus.READY || !this.lastReadyTime) {
+      return true;
+    }
+    return (now - this.lastReadyTime) >= this.staleThresholdMs;
+  }
+
+  markWaking() {
+    if (this.status !== ReadinessStatus.WAKING) {
+      this.status = ReadinessStatus.WAKING;
+      this.notify();
+    }
   }
 
   subscribe(listener) {
@@ -52,16 +76,20 @@ class BackendReadinessManager {
     this.status = ReadinessStatus.IDLE;
     this.inFlightPromise = null;
     this.retryCount = 0;
+    this.lastReadyTime = null;
     this.notify();
   }
 
   async checkReadiness(overrideOptions = {}) {
-    // If already verified ready, resolve immediately
-    if (this.status === ReadinessStatus.READY) {
-      return { ready: true, status: this.status };
+    const force = overrideOptions.force || false;
+    const now = overrideOptions.now || Date.now();
+
+    // If confirmed ready, not stale, and not forced, resolve immediately
+    if (this.status === ReadinessStatus.READY && !force && !this.isStale(now)) {
+      return { ready: true, status: this.status, fresh: true };
     }
 
-    // Share existing in-flight check promise
+    // Share existing in-flight check promise if one is already active
     if (this.inFlightPromise) {
       return this.inFlightPromise;
     }
@@ -107,11 +135,11 @@ class BackendReadinessManager {
 
         try {
           const url = `${baseURL}${endpoint}`;
-          // Lightweight health check without sending any auth headers or request body
+          // Lightweight GET health check with timeout
           const response = await httpClient.get(url, {
             timeout: timeoutMs,
             signal: internalSignal,
-            validateStatus: () => true, // Inspect status without throwing on 5xx
+            validateStatus: () => true, // Don't throw on 5xx so status can be inspected
           });
 
           const isUp =
@@ -122,6 +150,7 @@ class BackendReadinessManager {
 
           if (isUp) {
             this.status = ReadinessStatus.READY;
+            this.lastReadyTime = Date.now();
             this.inFlightPromise = null;
             this.notify();
             return { ready: true, attempts: attempt + 1 };
@@ -141,7 +170,7 @@ class BackendReadinessManager {
           break;
         }
 
-        // On first failure, update state to WAKING so user sees calm wake-up message
+        // On first failed attempt, transition to WAKING so UI calmly informs the user
         if (this.status !== ReadinessStatus.WAKING) {
           this.status = ReadinessStatus.WAKING;
           this.notify();

@@ -31,7 +31,7 @@ const BackendStatusBanner = () => {
       >
         <AlertCircle className="text-red-400 shrink-0" size={16} />
         <span>
-          The server is taking longer than expected to start. Please check your connection or retry.
+          The server is taking longer than expected to start after inactivity. You can continue waiting or retry.
         </span>
         <button
           onClick={retry}

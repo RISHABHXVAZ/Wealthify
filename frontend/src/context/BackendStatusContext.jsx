@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { backendReadiness, ReadinessStatus } from '../services/backendReadiness';
+import { backendReadiness, ReadinessStatus } from '../services/backendReadiness.js';
 
 const BackendStatusContext = createContext({
   status: ReadinessStatus.IDLE,
@@ -20,8 +20,30 @@ export const BackendStatusProvider = ({ children }) => {
     // Initiate early readiness check on app mount
     backendReadiness.checkReadiness();
 
+    // Revalidate readiness when the user returns to an inactive tab
+    const handleVisibilityOrFocus = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        if (backendReadiness.isStale()) {
+          backendReadiness.checkReadiness({ force: true });
+        }
+      }
+    };
+
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+    }
+    if (typeof window !== 'undefined') {
+      window.addEventListener('focus', handleVisibilityOrFocus);
+    }
+
     return () => {
       unsubscribe();
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+      }
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('focus', handleVisibilityOrFocus);
+      }
     };
   }, []);
 

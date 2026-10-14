@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { backendReadiness, ReadinessStatus } from '../services/backendReadiness.js';
 
 export const API_BASE_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) || 'http://localhost:8080';
 
@@ -8,9 +9,6 @@ const API = axios.create({
 });
 
 // Public auth endpoints never need (and shouldn't send) a bearer token.
-// Sending a stale/expired token here was tripping up the backend's JWT
-// filter and turning "forgot password" into a hard failure instead of
-// just working like an unauthenticated request should.
 const PUBLIC_AUTH_PATHS = [
   '/api/auth/login',
   '/api/auth/register',
@@ -18,7 +16,17 @@ const PUBLIC_AUTH_PATHS = [
   '/api/auth/reset-password',
 ];
 
-API.interceptors.request.use((config) => {
+// Pre-flight readiness check when backend is waking or readiness is stale
+API.interceptors.request.use(async (config) => {
+  const isHealthCheck = config.url?.includes('/actuator/health');
+  if (!isHealthCheck && (backendReadiness.isStale() || backendReadiness.getStatus() === ReadinessStatus.WAKING)) {
+    try {
+      await backendReadiness.checkReadiness();
+    } catch {
+      // Proceed; let normal Axios error handling manage the outcome
+    }
+  }
+
   const isPublicAuthRoute = PUBLIC_AUTH_PATHS.some((path) => config.url?.includes(path));
   const token = localStorage.getItem('token');
   if (token && !isPublicAuthRoute) {
@@ -26,5 +34,19 @@ API.interceptors.request.use((config) => {
   }
   return config;
 });
+
+// Response interceptor: detect Render idle gateway responses (502, 503, 504)
+API.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const status = error.response?.status;
+    if (status === 502 || status === 503 || status === 504) {
+      backendReadiness.markWaking();
+      backendReadiness.checkReadiness({ force: true });
+    }
+    // NEVER automatically replay mutating requests (POST, PUT, PATCH, DELETE)
+    return Promise.reject(error);
+  }
+);
 
 export default API;

@@ -5,7 +5,7 @@ import { BackendReadinessManager, ReadinessStatus } from '../src/services/backen
 test('OPT-05: Successful readiness check transitions to READY on first attempt', async () => {
   let callCount = 0;
   const mockHttpClient = {
-    get: async (url, config) => {
+    get: async (url) => {
       callCount++;
       assert.match(url, /\/actuator\/health\/readiness$/);
       return { status: 200, data: { status: 'UP' } };
@@ -28,6 +28,7 @@ test('OPT-05: Successful readiness check transitions to READY on first attempt',
   assert.equal(result.ready, true);
   assert.equal(result.attempts, 1);
   assert.equal(manager.getStatus(), ReadinessStatus.READY);
+  assert.ok(manager.getLastReadyTime() > 0, 'Must record lastReadyTime');
   assert.equal(callCount, 1);
   assert.ok(statuses.includes(ReadinessStatus.CHECKING));
   assert.ok(statuses.includes(ReadinessStatus.READY));
@@ -136,7 +137,7 @@ test('OPT-05: Simultaneous calls share a single in-flight warm-up operation', as
   assert.equal(callCount, 1, 'Only one HTTP call should be made for concurrent requests');
 });
 
-test('OPT-05: Subsequent checkReadiness calls bypass network once confirmed READY', async () => {
+test('OPT-05: Subsequent checkReadiness calls bypass network while readiness remains fresh', async () => {
   let callCount = 0;
   const mockHttpClient = {
     get: async () => {
@@ -147,16 +148,137 @@ test('OPT-05: Subsequent checkReadiness calls bypass network once confirmed READ
 
   const manager = new BackendReadinessManager({
     baseURL: 'http://test-server:8080',
+    staleThresholdMs: 60000, // 1 minute
   });
 
   const first = await manager.checkReadiness({ httpClient: mockHttpClient, initialDelayMs: 10 });
   assert.equal(first.ready, true);
   assert.equal(callCount, 1);
 
-  // Subsequent check should return immediately without making network calls
-  const second = await manager.checkReadiness({ httpClient: mockHttpClient });
+  // 5 subsequent calls within freshness window should bypass network
+  for (let i = 0; i < 5; i++) {
+    const res = await manager.checkReadiness({ httpClient: mockHttpClient });
+    assert.equal(res.ready, true);
+    assert.equal(res.fresh, true);
+  }
+  assert.equal(callCount, 1, 'Network call count must remain 1 while fresh');
+});
+
+test('OPT-05A: Returning to the application after readiness has become stale triggers revalidation', async () => {
+  let callCount = 0;
+  const mockHttpClient = {
+    get: async () => {
+      callCount++;
+      return { status: 200, data: { status: 'UP' } };
+    },
+  };
+
+  const manager = new BackendReadinessManager({
+    baseURL: 'http://test-server:8080',
+    staleThresholdMs: 40, // 40ms threshold for test
+  });
+
+  // 1. Initial check marks it ready
+  const first = await manager.checkReadiness({ httpClient: mockHttpClient, initialDelayMs: 10 });
+  assert.equal(first.ready, true);
+  assert.equal(callCount, 1);
+  assert.equal(manager.isStale(), false);
+
+  // 2. Wait until staleThreshold has passed
+  await new Promise((resolve) => setTimeout(resolve, 55));
+  assert.equal(manager.isStale(), true, 'Must report stale after threshold elapses');
+
+  // 3. Next check triggers revalidation probe
+  const second = await manager.checkReadiness({ httpClient: mockHttpClient, initialDelayMs: 10 });
   assert.equal(second.ready, true);
-  assert.equal(callCount, 1, 'Network call count must remain 1 after becoming ready');
+  assert.equal(callCount, 2, 'Must issue a new network probe after becoming stale');
+  assert.equal(manager.isStale(), false, 'Must be fresh again after successful revalidation');
+});
+
+test('OPT-05A: Multiple concurrent requests after becoming stale share a single revalidation probe', async () => {
+  let callCount = 0;
+  let resolveGet;
+  const getPromise = new Promise((resolve) => {
+    resolveGet = resolve;
+  });
+
+  const mockHttpClient = {
+    get: async () => {
+      callCount++;
+      if (callCount === 2) {
+        await getPromise;
+      }
+      return { status: 200, data: { status: 'UP' } };
+    },
+  };
+
+  const manager = new BackendReadinessManager({
+    baseURL: 'http://test-server:8080',
+    staleThresholdMs: 20,
+  });
+
+  // Initial check
+  await manager.checkReadiness({ httpClient: mockHttpClient, initialDelayMs: 5 });
+  assert.equal(callCount, 1);
+
+  // Wait for staleness
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.equal(manager.isStale(), true);
+
+  // Fire 4 concurrent checks when stale
+  const p1 = manager.checkReadiness({ httpClient: mockHttpClient, initialDelayMs: 5 });
+  const p2 = manager.checkReadiness({ httpClient: mockHttpClient, initialDelayMs: 5 });
+  const p3 = manager.checkReadiness({ httpClient: mockHttpClient, initialDelayMs: 5 });
+  const p4 = manager.checkReadiness({ httpClient: mockHttpClient, initialDelayMs: 5 });
+
+  assert.equal(callCount, 2, 'Only 1 additional HTTP request should be made across all concurrent checks');
+
+  resolveGet();
+  const results = await Promise.all([p1, p2, p3, p4]);
+
+  results.forEach((r) => assert.equal(r.ready, true));
+  assert.equal(callCount, 2);
+  assert.equal(manager.isStale(), false);
+});
+
+test('OPT-05A: Retry exhaustion provides explicit manual reset and recovery', async () => {
+  let callCount = 0;
+  let serverAwake = false;
+
+  const mockHttpClient = {
+    get: async () => {
+      callCount++;
+      if (!serverAwake) {
+        throw new Error('Connection refused (Render sleeping)');
+      }
+      return { status: 200, data: { status: 'UP' } };
+    },
+  };
+
+  const manager = new BackendReadinessManager({
+    baseURL: 'http://test-server:8080',
+    maxRetries: 2,
+    initialDelayMs: 5,
+    maxDelayMs: 10,
+    timeoutMs: 20,
+  });
+
+  // Exhaust retries
+  const exhaustedResult = await manager.checkReadiness({ httpClient: mockHttpClient });
+  assert.equal(exhaustedResult.ready, false);
+  assert.equal(exhaustedResult.exhausted, true);
+  assert.equal(manager.getStatus(), ReadinessStatus.EXHAUSTED);
+
+  // Server wakes up in the background
+  serverAwake = true;
+
+  // Manual retry resets manager and recovers smoothly
+  manager.reset();
+  assert.equal(manager.getStatus(), ReadinessStatus.IDLE);
+
+  const recoveredResult = await manager.checkReadiness({ httpClient: mockHttpClient, initialDelayMs: 5 });
+  assert.equal(recoveredResult.ready, true);
+  assert.equal(manager.getStatus(), ReadinessStatus.READY);
 });
 
 test('OPT-05: Cleanup and cancellation via AbortSignal cancels pending check', async () => {
@@ -166,7 +288,6 @@ test('OPT-05: Cleanup and cancellation via AbortSignal cancels pending check', a
   const mockHttpClient = {
     get: async () => {
       callCount++;
-      // Simulate failure that would trigger backoff
       return { status: 503, data: 'Starting...' };
     },
   };
@@ -182,7 +303,6 @@ test('OPT-05: Cleanup and cancellation via AbortSignal cancels pending check', a
     signal: abortController.signal,
   });
 
-  // Abort while waiting for backoff
   setTimeout(() => abortController.abort(), 20);
 
   const result = await checkPromise;
