@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import API from '../api/axios';
+import API, { getFriendlyErrorMessage } from '../api/axios';
 import { PlusCircle, Loader, CheckCircle, AlertTriangle, Sparkles } from 'lucide-react';
 import { useBudget } from '../context/BudgetContext';
 
@@ -27,7 +27,7 @@ const AddExpense = () => {
             await fetchBudget();
             setForm({ amount: '', description: '', expenseDate: '', splitCount: '' });
         } catch (err) {
-            setError(err.response?.data?.message || 'Failed to add expense. Please try again.');
+            setError(getFriendlyErrorMessage(err, 'Failed to add expense. Please try again.', true));
         } finally {
             setLoading(false);
         }

@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
-import API from '../api/axios';
+import { useState, useEffect, useCallback } from 'react';
+import API, { getFriendlyErrorMessage } from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 import {
   Wallet, TrendingDown, AlertTriangle, Calendar,
-  Loader, PlusCircle, ArrowRight, Bot
+  Loader, PlusCircle, ArrowRight, Bot, RefreshCw
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useBudget } from '../context/BudgetContext';
@@ -30,32 +30,35 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const now = new Date();
-        const month = now.getMonth() + 1;
-        const year = now.getFullYear();
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const now = new Date();
+      const month = now.getMonth() + 1;
+      const year = now.getFullYear();
 
-        const [dailyRes, monthlyRes] = await Promise.all([
-          API.get('/api/analytics/daily'),
-          API.get(`/api/analytics/monthly?month=${month}&year=${year}`)
-        ]);
+      const [dailyRes, monthlyRes] = await Promise.all([
+        API.get('/api/analytics/daily'),
+        API.get(`/api/analytics/monthly?month=${month}&year=${year}`)
+      ]);
 
-        console.log('Daily data:', dailyRes.data);
-        console.log('Monthly data:', monthlyRes.data);
+      console.log('Daily data:', dailyRes.data);
+      console.log('Monthly data:', monthlyRes.data);
 
-        setDaily(dailyRes.data);
-        setMonthly(monthlyRes.data);
-      } catch (err) {
-        console.error('Dashboard fetch error:', err);
-        setError('Failed to load dashboard data.');
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
+      setDaily(dailyRes.data);
+      setMonthly(monthlyRes.data);
+    } catch (err) {
+      console.error('Dashboard fetch error:', err);
+      setError(getFriendlyErrorMessage(err, 'Failed to load dashboard data.'));
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   if (loading) return (
     <div className="flex items-center justify-center h-64">
@@ -64,8 +67,16 @@ const Dashboard = () => {
   );
 
   if (error) return (
-    <div className="flex items-center justify-center h-64">
-      <p className="text-red-400">{error}</p>
+    <div className="flex flex-col items-center justify-center h-64 gap-3 text-center px-4">
+      <p className="text-red-400 text-sm max-w-md">{error}</p>
+      <button
+        onClick={fetchData}
+        type="button"
+        className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-white rounded-lg text-xs transition border border-gray-700 cursor-pointer"
+      >
+        <RefreshCw size={13} />
+        Retry
+      </button>
     </div>
   );
 

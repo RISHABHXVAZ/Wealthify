@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import API from '../api/axios';
+import API, { getFriendlyErrorMessage } from '../api/axios';
 import {
   PiggyBank, Loader, Save, AlertTriangle, CheckCircle, Bot
 } from 'lucide-react';
@@ -45,7 +45,7 @@ const Budget = () => {
       }
       setMsg('Budget setup saved successfully! All tabs are now updated.');
     } catch (err) {
-      setError('Failed to save budget setup.');
+      setError(getFriendlyErrorMessage(err, 'Failed to save budget setup.', true));
     } finally {
       setSaving(false);
     }

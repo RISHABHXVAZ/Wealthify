@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import API from '../api/axios';
+import API, { getFriendlyErrorMessage } from '../api/axios';
 import { useBudget } from '../context/BudgetContext';
 import {
   Target as TargetIcon,
@@ -265,7 +265,7 @@ const Goals = () => {
       setShowForm(false);
       await fetchGoals();
     } catch (err) {
-      setError('Failed to create goal. Please try again.');
+      setError(getFriendlyErrorMessage(err, 'Failed to create goal. Please try again.', true));
     } finally {
       setCreating(false);
     }

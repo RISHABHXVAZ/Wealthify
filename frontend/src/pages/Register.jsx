@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import API from '../api/axios';
+import API, { getFriendlyErrorMessage } from '../api/axios';
 import { TrendingUp, Mail, Lock, User, Loader, Eye, EyeOff } from 'lucide-react';
 
 const Register = () => {
@@ -18,7 +18,7 @@ const Register = () => {
       await API.post('/api/auth/register', form);
       navigate('/login');
     } catch (err) {
-      setError(err.response?.data || 'Registration failed');
+      setError(getFriendlyErrorMessage(err, 'Registration failed'));
     } finally {
       setLoading(false);
     }

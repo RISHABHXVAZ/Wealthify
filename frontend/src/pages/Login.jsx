@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import API from '../api/axios';
+import API, { getFriendlyErrorMessage } from '../api/axios';
 import { TrendingUp, Mail, Lock, Loader, Eye, EyeOff } from 'lucide-react';
 
 const Login = () => {
@@ -27,7 +27,7 @@ const Login = () => {
       login({ name: res.data.name, email: res.data.email }, res.data.token);
       navigate('/dashboard');
     } catch (err) {
-      setError('Invalid email or password');
+      setError(getFriendlyErrorMessage(err, 'Invalid email or password'));
     } finally {
       setLoading(false);
     }
@@ -46,7 +46,7 @@ const Login = () => {
         navigate(`/reset-password?email=${encodeURIComponent(forgotEmail)}`);
       }, 2000);
     } catch (err) {
-      setError(err.response?.data?.message || 'Something went wrong. Please check your connection.');
+      setError(getFriendlyErrorMessage(err, 'Something went wrong. Please check your connection.'));
     } finally {
       setLoading(false);
     }

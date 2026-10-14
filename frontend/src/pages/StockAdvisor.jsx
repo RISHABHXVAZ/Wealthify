@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import API from '../api/axios';
+import API, { getFriendlyErrorMessage } from '../api/axios';
 import { TrendingUp, Loader, DollarSign, AlertCircle } from 'lucide-react';
 import { useBudget } from '../context/BudgetContext';
 
@@ -34,7 +34,7 @@ const StockAdvisor = () => {
       const res = await API.get(`/api/stocks/recommend?month=${month}&year=${year}`);
       setData(res.data);
     } catch (err) {
-      setError(err.response?.data || 'Please set your monthly income first.');
+      setError(getFriendlyErrorMessage(err, 'Please set your monthly income first.'));
     } finally {
       setLoading(false);
     }

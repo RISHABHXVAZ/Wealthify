@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import API from '../api/axios';
+import API, { getFriendlyErrorMessage } from '../api/axios';
 import { TrendingUp, Lock, Loader, Eye, EyeOff, ShieldCheck } from 'lucide-react';
 
 const ResetPassword = () => {
@@ -36,7 +36,7 @@ const ResetPassword = () => {
       setSuccess(res.data.message || 'Verification complete! Password updated.');
       setTimeout(() => navigate('/login'), 2500);
     } catch (err) {
-      setError(err.response?.data?.message || 'The configuration code is invalid or has expired.');
+      setError(getFriendlyErrorMessage(err, 'The configuration code is invalid or has expired.'));
     } finally {
       setLoading(false);
     }
