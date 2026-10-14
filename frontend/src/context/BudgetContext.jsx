@@ -7,16 +7,25 @@ const BudgetContext = createContext();
 export const BudgetProvider = ({ children }) => {
   const { token } = useAuth();
   const [budget, setBudget] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(Boolean(token));
+  const [error, setError] = useState('');
 
   const fetchBudget = useCallback(async () => {
-    if (!token) return;
+    if (!token) {
+      setBudget(null);
+      setLoading(false);
+      return null;
+    }
     setLoading(true);
+    setError('');
     try {
       const res = await API.get('/api/budget/allocation');
       setBudget(res.data);
+      return res.data;
     } catch (err) {
       console.error('Budget fetch failed:', err);
+      setError(err.response?.data?.message || 'Failed to fetch budget');
+      return null;
     } finally {
       setLoading(false);
     }
@@ -27,7 +36,7 @@ export const BudgetProvider = ({ children }) => {
   }, [fetchBudget]);
 
   return (
-    <BudgetContext.Provider value={{ budget, loading, fetchBudget }}>
+    <BudgetContext.Provider value={{ budget, setBudget, loading, error, fetchBudget }}>
       {children}
     </BudgetContext.Provider>
   );

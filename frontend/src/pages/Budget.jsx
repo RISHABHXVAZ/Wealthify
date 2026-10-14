@@ -6,9 +6,7 @@ import {
 import { useBudget } from '../context/BudgetContext';
 
 const Budget = () => {
-  const { budget: globalBudget, fetchBudget: refreshGlobal } = useBudget();
-  const [budget, setBudget] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const { budget, setBudget, loading, error: contextError, fetchBudget } = useBudget();
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     monthlyIncome: '',
@@ -18,39 +16,16 @@ const Budget = () => {
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
 
+  // Sync local form when global budget loads or updates
   useEffect(() => {
-    fetchBudget();
-  }, []);
-
-  // Sync local form when global budget loads
-  useEffect(() => {
-    if (globalBudget && !budget) {
-      setBudget(globalBudget);
+    if (budget) {
       setForm({
-        monthlyIncome: globalBudget.monthlyIncome || '',
-        savingPercentage: globalBudget.savingPercentage || '20',
-        investmentPercentage: globalBudget.investmentPercentage || '30',
+        monthlyIncome: budget.monthlyIncome != null ? String(budget.monthlyIncome) : '',
+        savingPercentage: budget.savingPercentage != null ? String(budget.savingPercentage) : '20',
+        investmentPercentage: budget.investmentPercentage != null ? String(budget.investmentPercentage) : '30',
       });
-      setLoading(false);
     }
-  }, [globalBudget]);
-
-  const fetchBudget = async () => {
-    setLoading(true);
-    try {
-      const res = await API.get('/api/budget/allocation');
-      setBudget(res.data);
-      setForm({
-        monthlyIncome: res.data.monthlyIncome || '',
-        savingPercentage: res.data.savingPercentage || '20',
-        investmentPercentage: res.data.investmentPercentage || '30',
-      });
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [budget]);
 
   const handleSetup = async (e) => {
     e.preventDefault();
@@ -63,8 +38,11 @@ const Budget = () => {
         savingPercentage: parseFloat(form.savingPercentage),
         investmentPercentage: parseFloat(form.investmentPercentage),
       });
-      setBudget(res.data);
-      await refreshGlobal(); // ← sync all tabs
+      if (setBudget) {
+        setBudget(res.data);
+      } else {
+        await fetchBudget();
+      }
       setMsg('Budget setup saved successfully! All tabs are now updated.');
     } catch (err) {
       setError('Failed to save budget setup.');
@@ -81,7 +59,7 @@ const Budget = () => {
   const investAmt = (savingAmt * investPct) / 100;
   const availableAmt = income - savingAmt;
 
-  if (loading) return (
+  if (loading && !budget) return (
     <div className="flex items-center justify-center h-64">
       <Loader className="animate-spin text-green-400" size={32} />
     </div>

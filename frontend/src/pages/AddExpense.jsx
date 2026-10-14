@@ -1,19 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import API from '../api/axios';
 import { PlusCircle, Loader, CheckCircle, AlertTriangle, Sparkles } from 'lucide-react';
 import { useBudget } from '../context/BudgetContext';
 
 const AddExpense = () => {
     const [form, setForm] = useState({ amount: '', description: '', expenseDate: '', splitCount: '' });
-    const [categories, setCategories] = useState([]);
     const [loading, setLoading] = useState(false);
     const [result, setResult] = useState(null);
     const [error, setError] = useState('');
     const { budget, fetchBudget } = useBudget();
-
-    useEffect(() => {
-        API.get('/api/categories').then(res => setCategories(res.data));
-    }, []);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
