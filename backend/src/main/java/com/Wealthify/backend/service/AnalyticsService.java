@@ -6,6 +6,7 @@ import com.Wealthify.backend.entity.User;
 import com.Wealthify.backend.exception.BusinessException;
 import com.Wealthify.backend.repository.ExpenseRepository;
 import com.Wealthify.backend.repository.UserRepository;
+import com.Wealthify.backend.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -25,6 +26,13 @@ public class AnalyticsService {
     private final UserRepository userRepository;
     private final AiService aiService;
 
+    public DailySummaryResponse getDailySummary(UserPrincipal principal, LocalDate date) {
+        List<Expense> expenses = expenseRepository
+                .findByUserIdAndExpenseDateBetweenOrderByExpenseDateDesc(principal.getId(), date, date);
+
+        return buildDailySummary(principal.getId(), date, expenses);
+    }
+
     public DailySummaryResponse getDailySummary(String email, LocalDate date) {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new BusinessException("User not found"));
@@ -33,6 +41,19 @@ public class AnalyticsService {
                 .findByUserAndExpenseDateBetweenOrderByExpenseDateDesc(user, date, date);
 
         return buildDailySummary(user.getId(), date, expenses);
+    }
+
+    public MonthlySummaryResponse getMonthlySummary(UserPrincipal principal, int month, int year) {
+        LocalDate start = LocalDate.of(year, month, 1);
+        LocalDate end = start.withDayOfMonth(start.lengthOfMonth());
+
+        List<Expense> allExpenses = expenseRepository
+                .findByUserIdAndExpenseDateBetweenOrderByExpenseDateDesc(principal.getId(), start, end);
+
+        BigDecimal income = principal.getMonthlyIncome() != null
+                ? principal.getMonthlyIncome() : BigDecimal.ZERO;
+
+        return calculateMonthlySummary(principal.getId(), income, month, year, allExpenses);
     }
 
     public MonthlySummaryResponse getMonthlySummary(String email, int month, int year) {
@@ -45,13 +66,21 @@ public class AnalyticsService {
         List<Expense> allExpenses = expenseRepository
                 .findByUserAndExpenseDateBetweenOrderByExpenseDateDesc(user, start, end);
 
+        BigDecimal income = user.getMonthlyIncome() != null
+                ? user.getMonthlyIncome() : BigDecimal.ZERO;
+
+        return calculateMonthlySummary(user.getId(), income, month, year, allExpenses);
+    }
+
+    private MonthlySummaryResponse calculateMonthlySummary(UUID userId, BigDecimal income, int month, int year, List<Expense> allExpenses) {
+
         // Build daily breakdown
         Map<LocalDate, List<Expense>> byDay = allExpenses.stream()
                 .collect(Collectors.groupingBy(Expense::getExpenseDate));
 
         List<DailySummaryResponse> dailyBreakdown = byDay.entrySet().stream()
                 .sorted(Map.Entry.comparingByKey())
-                .map(e -> buildDailySummary(user.getId(), e.getKey(), e.getValue(), false))
+                .map(e -> buildDailySummary(userId, e.getKey(), e.getValue(), false))
                 .collect(Collectors.toList());
 
         // Total spent
@@ -69,11 +98,10 @@ public class AnalyticsService {
         Map<String, BigDecimal> spendingByCategory = buildCategoryMap(allExpenses);
 
         // Income and savings
-        BigDecimal income = user.getMonthlyIncome() != null
-                ? user.getMonthlyIncome() : BigDecimal.ZERO;
-        BigDecimal savings = income.subtract(totalSpent);
-        double savingsPercentage = income.compareTo(BigDecimal.ZERO) > 0
-                ? savings.divide(income, 4, RoundingMode.HALF_UP)
+        BigDecimal resolvedIncome = income != null ? income : BigDecimal.ZERO;
+        BigDecimal savings = resolvedIncome.subtract(totalSpent);
+        double savingsPercentage = resolvedIncome.compareTo(BigDecimal.ZERO) > 0
+                ? savings.divide(resolvedIncome, 4, RoundingMode.HALF_UP)
                 .multiply(BigDecimal.valueOf(100))
                 .doubleValue()
                 : 0.0;
@@ -87,12 +115,12 @@ public class AnalyticsService {
 
         // AI monthly summary
         String aiSummary = generateMonthlySummary(
-                user.getId(), month, year, allExpenses, totalSpent, income, spendingByCategory
+                userId, month, year, allExpenses, totalSpent, resolvedIncome, spendingByCategory
         );
 
         // AI tips
         List<String> aiTips = generateAiTips(
-                user.getId(), month, year, spendingByCategory, wastefulAmount, income
+                userId, month, year, spendingByCategory, wastefulAmount, resolvedIncome
         );
 
         return MonthlySummaryResponse.builder()

@@ -2,6 +2,7 @@ package com.Wealthify.backend.controller;
 
 import com.Wealthify.backend.dto.ExpenseRequest;
 import com.Wealthify.backend.dto.ExpenseResponse;
+import com.Wealthify.backend.security.UserPrincipal;
 import com.Wealthify.backend.service.ExpenseService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -36,6 +37,10 @@ public class ExpenseController {
     @GetMapping("/today")
     public ResponseEntity<List<ExpenseResponse>> getToday(
             @AuthenticationPrincipal UserDetails userDetails) {
+        if (userDetails instanceof UserPrincipal principal) {
+            return ResponseEntity.ok(
+                    expenseService.getExpensesByDate(principal, LocalDate.now()));
+        }
         return ResponseEntity.ok(
                 expenseService.getExpensesByDate(
                         userDetails.getUsername(), LocalDate.now()));
@@ -50,6 +55,10 @@ public class ExpenseController {
             parsedDate = LocalDate.parse(date);
         } catch (DateTimeParseException ex) {
             throw new IllegalArgumentException("Invalid date format. Expected YYYY-MM-DD");
+        }
+        if (userDetails instanceof UserPrincipal principal) {
+            return ResponseEntity.ok(
+                    expenseService.getExpensesByDate(principal, parsedDate));
         }
         return ResponseEntity.ok(
                 expenseService.getExpensesByDate(
@@ -75,6 +84,10 @@ public class ExpenseController {
             throw new IllegalArgumentException("Year must be between 1970 and 2100");
         }
 
+        if (userDetails instanceof UserPrincipal principal) {
+            return ResponseEntity.ok(
+                    expenseService.getExpensesByMonth(principal, month, year));
+        }
         return ResponseEntity.ok(
                 expenseService.getExpensesByMonth(
                         userDetails.getUsername(), month, year));
@@ -84,7 +97,11 @@ public class ExpenseController {
     public ResponseEntity<String> delete(
             @AuthenticationPrincipal UserDetails userDetails,
             @PathVariable UUID id) {
-        expenseService.deleteExpense(userDetails.getUsername(), id);
+        if (userDetails instanceof UserPrincipal principal) {
+            expenseService.deleteExpense(principal, id);
+        } else {
+            expenseService.deleteExpense(userDetails.getUsername(), id);
+        }
         return ResponseEntity.ok("Deleted successfully");
     }
 }

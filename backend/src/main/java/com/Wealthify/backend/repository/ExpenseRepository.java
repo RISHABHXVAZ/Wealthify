@@ -16,4 +16,12 @@ public interface ExpenseRepository extends JpaRepository<Expense, UUID> {
 
     @EntityGraph(attributePaths = {"category"})
     List<Expense> findByUserOrderByExpenseDateDesc(User user);
+
+    @EntityGraph(attributePaths = {"category"})
+    List<Expense> findByUserIdAndExpenseDateBetweenOrderByExpenseDateDesc(
+            UUID userId, LocalDate start, LocalDate end
+    );
+
+    @EntityGraph(attributePaths = {"category"})
+    List<Expense> findByUserIdOrderByExpenseDateDesc(UUID userId);
 }

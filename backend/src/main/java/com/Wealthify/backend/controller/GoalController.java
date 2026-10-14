@@ -1,6 +1,7 @@
 package com.Wealthify.backend.controller;
 
 import com.Wealthify.backend.dto.*;
+import com.Wealthify.backend.security.UserPrincipal;
 import com.Wealthify.backend.service.GoalService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +33,10 @@ public class GoalController {
     @GetMapping("/budget/allocation")
     public ResponseEntity<BudgetAllocationResponse> getBudget(
             @AuthenticationPrincipal UserDetails userDetails) {
+        if (userDetails instanceof UserPrincipal principal) {
+            return ResponseEntity.ok(
+                    goalService.getBudgetAllocation(principal));
+        }
         return ResponseEntity.ok(
                 goalService.getBudgetAllocation(userDetails.getUsername()));
     }
@@ -49,6 +54,10 @@ public class GoalController {
     @GetMapping("/goals")
     public ResponseEntity<List<GoalResponse>> getGoals(
             @AuthenticationPrincipal UserDetails userDetails) {
+        if (userDetails instanceof UserPrincipal principal) {
+            return ResponseEntity.ok(
+                    goalService.getGoals(principal));
+        }
         return ResponseEntity.ok(
                 goalService.getGoals(userDetails.getUsername()));
     }
@@ -70,7 +79,11 @@ public class GoalController {
     public ResponseEntity<String> deleteGoal(
             @AuthenticationPrincipal UserDetails userDetails,
             @PathVariable UUID id) {
-        goalService.deleteGoal(userDetails.getUsername(), id);
+        if (userDetails instanceof UserPrincipal principal) {
+            goalService.deleteGoal(principal, id);
+        } else {
+            goalService.deleteGoal(userDetails.getUsername(), id);
+        }
         return ResponseEntity.ok("Goal deleted successfully");
     }
 }

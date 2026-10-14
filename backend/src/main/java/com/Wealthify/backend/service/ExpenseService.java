@@ -6,6 +6,7 @@ import com.Wealthify.backend.dto.ExpenseResponse;
 import com.Wealthify.backend.entity.*;
 import com.Wealthify.backend.exception.BusinessException;
 import com.Wealthify.backend.repository.*;
+import com.Wealthify.backend.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -110,11 +111,29 @@ public class ExpenseService {
         return ExpenseResponse.fromEntity(saved);
     }
 
+    public List<ExpenseResponse> getExpensesByDate(UserPrincipal principal, LocalDate date) {
+        return expenseRepository
+                .findByUserIdAndExpenseDateBetweenOrderByExpenseDateDesc(principal.getId(), date, date)
+                .stream()
+                .map(ExpenseResponse::fromEntity)
+                .toList();
+    }
+
     public List<ExpenseResponse> getExpensesByDate(String email, LocalDate date) {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new BusinessException("User not found"));
         return expenseRepository
                 .findByUserAndExpenseDateBetweenOrderByExpenseDateDesc(user, date, date)
+                .stream()
+                .map(ExpenseResponse::fromEntity)
+                .toList();
+    }
+
+    public List<ExpenseResponse> getExpensesByMonth(UserPrincipal principal, int month, int year) {
+        LocalDate start = LocalDate.of(year, month, 1);
+        LocalDate end = start.withDayOfMonth(start.lengthOfMonth());
+        return expenseRepository
+                .findByUserIdAndExpenseDateBetweenOrderByExpenseDateDesc(principal.getId(), start, end)
                 .stream()
                 .map(ExpenseResponse::fromEntity)
                 .toList();
@@ -130,6 +149,16 @@ public class ExpenseService {
                 .stream()
                 .map(ExpenseResponse::fromEntity)
                 .toList();
+    }
+
+    public void deleteExpense(UserPrincipal principal, UUID expenseId) {
+        Expense expense = expenseRepository.findById(expenseId)
+                .orElseThrow(() -> new BusinessException("Expense not found"));
+        if (!expense.getUser().getId().equals(principal.getId())) {
+            throw new BusinessException("Unauthorized");
+        }
+        expenseRepository.delete(expense);
+        aiService.evictUserCache(principal.getId());
     }
 
     public void deleteExpense(String email, UUID expenseId) {

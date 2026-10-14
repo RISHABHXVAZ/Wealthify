@@ -15,6 +15,8 @@ import java.util.UUID;
 public interface GoalRepository extends JpaRepository<Goal, UUID> {
     List<Goal> findByUserAndStatusOrderByTargetDateAsc(User user, String status);
     List<Goal> findByUserOrderByCreatedAtDesc(User user);
+    List<Goal> findByUserIdOrderByCreatedAtDesc(UUID userId);
+    List<Goal> findByUserIdAndStatusOrderByTargetDateAsc(UUID userId, String status);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT g FROM Goal g WHERE g.id = :id")

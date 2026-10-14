@@ -1,6 +1,7 @@
 package com.Wealthify.backend.controller;
 
 import com.Wealthify.backend.dto.*;
+import com.Wealthify.backend.security.UserPrincipal;
 import com.Wealthify.backend.service.AuthService;
 import com.Wealthify.backend.service.StockAdvisorService;
 import jakarta.validation.Valid;
@@ -55,6 +56,11 @@ public class InsightController {
         if (month == null) month = LocalDate.now().getMonthValue();
         if (year == null) year = LocalDate.now().getYear();
 
+        if (userDetails instanceof UserPrincipal principal) {
+            return ResponseEntity.ok(
+                    stockAdvisorService.getWastefulAnalysis(
+                            principal, month, year));
+        }
         return ResponseEntity.ok(
                 stockAdvisorService.getWastefulAnalysis(
                         userDetails.getUsername(), month, year));
@@ -83,6 +89,11 @@ public class InsightController {
         if (month == null) month = LocalDate.now().getMonthValue();
         if (year == null) year = LocalDate.now().getYear();
 
+        if (userDetails instanceof UserPrincipal principal) {
+            return ResponseEntity.ok(
+                    stockAdvisorService.getStockRecommendations(
+                            principal, month, year));
+        }
         return ResponseEntity.ok(
                 stockAdvisorService.getStockRecommendations(
                         userDetails.getUsername(), month, year));

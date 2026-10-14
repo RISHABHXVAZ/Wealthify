@@ -14,10 +14,7 @@ public class UserDetailServiceImpl implements UserDetailsService {
     @Override
     public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
         return userRepository.findByEmail(email)
-                .map(user -> User.withUsername(user.getEmail())
-                        .password(user.getPassword())
-                        .roles("USER")
-                        .build())
+                .map(UserPrincipal::fromEntity)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found: " + email));
     }
 }

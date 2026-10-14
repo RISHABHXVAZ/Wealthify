@@ -2,6 +2,7 @@ package com.Wealthify.backend.controller;
 
 import com.Wealthify.backend.dto.DailySummaryResponse;
 import com.Wealthify.backend.dto.MonthlySummaryResponse;
+import com.Wealthify.backend.security.UserPrincipal;
 import com.Wealthify.backend.service.AnalyticsService;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -29,6 +30,10 @@ public class AnalyticsController {
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
 
         if (date == null) date = LocalDate.now();
+        if (userDetails instanceof UserPrincipal principal) {
+            return ResponseEntity.ok(
+                    analyticsService.getDailySummary(principal, date));
+        }
         return ResponseEntity.ok(
                 analyticsService.getDailySummary(userDetails.getUsername(), date));
     }
@@ -54,6 +59,11 @@ public class AnalyticsController {
 
         if (month == null) month = LocalDate.now().getMonthValue();
         if (year == null) year = LocalDate.now().getYear();
+
+        if (userDetails instanceof UserPrincipal principal) {
+            return ResponseEntity.ok(
+                    analyticsService.getMonthlySummary(principal, month, year));
+        }
         return ResponseEntity.ok(
                 analyticsService.getMonthlySummary(userDetails.getUsername(), month, year));
     }

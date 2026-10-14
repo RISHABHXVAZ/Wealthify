@@ -10,6 +10,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.security.authentication.*;
+import org.springframework.security.core.Authentication;
+import com.Wealthify.backend.security.UserPrincipal;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -62,9 +64,15 @@ public class AuthService {
     }
 
     public LoginResponse login(LoginRequest request) {
-        authenticationManager.authenticate(
+        Authentication authentication = authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(
                         request.getEmail(), request.getPassword()));
+
+        if (authentication.getPrincipal() instanceof UserPrincipal principal) {
+            String token = jwtUtil.generateToken(principal.getEmail());
+            return new LoginResponse(token, principal.getName(), principal.getEmail());
+        }
+
         User user = userRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> new BusinessException("User not found"));
         String token = jwtUtil.generateToken(user.getEmail());

@@ -8,6 +8,7 @@ import com.Wealthify.backend.entity.User;
 import com.Wealthify.backend.exception.BusinessException;
 import com.Wealthify.backend.repository.ExpenseRepository;
 import com.Wealthify.backend.repository.UserRepository;
+import com.Wealthify.backend.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -27,6 +28,16 @@ public class StockAdvisorService {
     private final UserRepository userRepository;
     private final AiService aiService;
 
+    public WastefulAnalysisResponse getWastefulAnalysis(UserPrincipal principal, int month, int year) {
+        LocalDate start = LocalDate.of(year, month, 1);
+        LocalDate end = start.withDayOfMonth(start.lengthOfMonth());
+
+        List<Expense> allExpenses = expenseRepository
+                .findByUserIdAndExpenseDateBetweenOrderByExpenseDateDesc(principal.getId(), start, end);
+
+        return calculateWastefulAnalysis(principal.getId(), principal.getMonthlyIncome(), month, year, allExpenses);
+    }
+
     public WastefulAnalysisResponse getWastefulAnalysis(String email, int month, int year) {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new BusinessException("User not found"));
@@ -37,6 +48,12 @@ public class StockAdvisorService {
         List<Expense> allExpenses = expenseRepository
                 .findByUserAndExpenseDateBetweenOrderByExpenseDateDesc(user, start, end);
 
+        return calculateWastefulAnalysis(user.getId(), user.getMonthlyIncome(), month, year, allExpenses);
+    }
+
+    private WastefulAnalysisResponse calculateWastefulAnalysis(UUID userId, BigDecimal monthlyIncome,
+                                                               int month, int year,
+                                                               List<Expense> allExpenses) {
         // Filter wasteful expenses
         List<Expense> wastefulExpenses = allExpenses.stream()
                 .filter(e -> Boolean.TRUE.equals(e.getIsFlaggedWasteful()))
@@ -85,17 +102,17 @@ public class StockAdvisorService {
                 .collect(Collectors.toList());
 
         // AI recommendations
-        BigDecimal income = user.getMonthlyIncome() != null
-                ? user.getMonthlyIncome() : BigDecimal.ZERO;
+        BigDecimal income = monthlyIncome != null
+                ? monthlyIncome : BigDecimal.ZERO;
 
         List<String> recommendations = aiService.generateWastefulRecommendations(
-                user.getId(), month, year,
+                userId, month, year,
                 wastefulByCategory, totalWasteful, income
         );
 
         String aiSummary = wastefulExpenses.isEmpty()
                 ? "Great job! No wasteful spending detected this month."
-                : aiService.generateDailySummary(user.getId(), LocalDate.of(year, month, 1),
+                : aiService.generateDailySummary(userId, LocalDate.of(year, month, 1),
                 totalWasteful, wastefulByCategory, wastefulExpenses.size());
 
         return WastefulAnalysisResponse.builder()
@@ -107,6 +124,27 @@ public class StockAdvisorService {
                 .aiRecommendations(recommendations)
                 .aiSummary(aiSummary)
                 .build();
+    }
+
+    public StockRecommendationResponse getStockRecommendations(
+            UserPrincipal principal, int month, int year) {
+        if (principal.getMonthlyIncome() == null ||
+                principal.getMonthlyIncome().compareTo(BigDecimal.ZERO) == 0) {
+            throw new BusinessException(
+                    "Please set your monthly income first via Budget Setup.");
+        }
+
+        LocalDate start = LocalDate.of(year, month, 1);
+        LocalDate end = start.withDayOfMonth(start.lengthOfMonth());
+
+        List<Expense> expenses = expenseRepository
+                .findByUserIdAndExpenseDateBetweenOrderByExpenseDateDesc(principal.getId(), start, end);
+
+        return calculateStockRecommendations(
+                principal.getId(), principal.getMonthlyIncome(),
+                principal.getSavingPercentage(), principal.getInvestmentPercentage(),
+                month, year, expenses
+        );
     }
 
     public StockRecommendationResponse getStockRecommendations(
@@ -126,17 +164,26 @@ public class StockAdvisorService {
         List<Expense> expenses = expenseRepository
                 .findByUserAndExpenseDateBetweenOrderByExpenseDateDesc(user, start, end);
 
+        return calculateStockRecommendations(
+                user.getId(), user.getMonthlyIncome(),
+                user.getSavingPercentage(), user.getInvestmentPercentage(),
+                month, year, expenses
+        );
+    }
+
+    private StockRecommendationResponse calculateStockRecommendations(
+            UUID userId, BigDecimal income, BigDecimal userSavePct, BigDecimal userInvestPct,
+            int month, int year, List<Expense> expenses) {
+
         BigDecimal totalExpenses = expenses.stream()
                 .map(Expense::getAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        BigDecimal income = user.getMonthlyIncome();
-
         // Use BUDGET SETUP values — not raw calculation
-        BigDecimal savePct = user.getSavingPercentage() != null
-                ? user.getSavingPercentage() : BigDecimal.valueOf(20);
-        BigDecimal investPct = user.getInvestmentPercentage() != null
-                ? user.getInvestmentPercentage() : BigDecimal.valueOf(30);
+        BigDecimal savePct = userSavePct != null
+                ? userSavePct : BigDecimal.valueOf(20);
+        BigDecimal investPct = userInvestPct != null
+                ? userInvestPct : BigDecimal.valueOf(30);
 
         // Fixed monthly saving from budget
         BigDecimal monthlySaving = income.multiply(savePct)
@@ -163,11 +210,11 @@ public class StockAdvisorService {
 
         List<StockRecommendationResponse.StockSuggestion> suggestions =
                 aiService.generateStockRecommendations(
-                        user.getId(), month, year,
+                        userId, month, year,
                         investmentAmount, income, spendingPattern);
 
         String rationale = aiService.generateBudgetAdvice(
-                user.getId(), month, year,
+                userId, month, year,
                 income, totalExpenses, monthlySaving,
                 investmentAmount,
                 availableForExpense.subtract(totalExpenses));

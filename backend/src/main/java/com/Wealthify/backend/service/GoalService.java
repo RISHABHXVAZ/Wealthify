@@ -4,6 +4,7 @@ import com.Wealthify.backend.dto.*;
 import com.Wealthify.backend.entity.*;
 import com.Wealthify.backend.exception.BusinessException;
 import com.Wealthify.backend.repository.*;
+import com.Wealthify.backend.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -39,22 +40,42 @@ public class GoalService {
         userRepository.save(user);
         aiService.evictUserCache(user.getId());
 
-        return buildBudgetResponse(user);
+        return buildBudgetResponse(
+                user.getId(),
+                user.getMonthlyIncome(),
+                user.getSavingPercentage(),
+                user.getInvestmentPercentage()
+        );
+    }
+
+    public BudgetAllocationResponse getBudgetAllocation(UserPrincipal principal) {
+        return buildBudgetResponse(
+                principal.getId(),
+                principal.getMonthlyIncome(),
+                principal.getSavingPercentage(),
+                principal.getInvestmentPercentage()
+        );
     }
 
     public BudgetAllocationResponse getBudgetAllocation(String email) {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new BusinessException("User not found"));
-        return buildBudgetResponse(user);
+        return buildBudgetResponse(
+                user.getId(),
+                user.getMonthlyIncome(),
+                user.getSavingPercentage(),
+                user.getInvestmentPercentage()
+        );
     }
 
-    private BudgetAllocationResponse buildBudgetResponse(User user) {
-        BigDecimal income = user.getMonthlyIncome() != null
-                ? user.getMonthlyIncome() : BigDecimal.ZERO;
-        BigDecimal savePct = user.getSavingPercentage() != null
-                ? user.getSavingPercentage() : BigDecimal.valueOf(20);
-        BigDecimal investPct = user.getInvestmentPercentage() != null
-                ? user.getInvestmentPercentage() : BigDecimal.valueOf(30);
+    private BudgetAllocationResponse buildBudgetResponse(UUID userId, BigDecimal monthlyIncome,
+                                                         BigDecimal savingPct, BigDecimal investmentPct) {
+        BigDecimal income = monthlyIncome != null
+                ? monthlyIncome : BigDecimal.ZERO;
+        BigDecimal savePct = savingPct != null
+                ? savingPct : BigDecimal.valueOf(20);
+        BigDecimal investPct = investmentPct != null
+                ? investmentPct : BigDecimal.valueOf(30);
 
         BigDecimal savingAmount = income.multiply(savePct)
                 .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
@@ -65,8 +86,8 @@ public class GoalService {
         LocalDate start = LocalDate.of(LocalDate.now().getYear(),
                 LocalDate.now().getMonth(), 1);
         List<Expense> thisMonth = expenseRepository
-                .findByUserAndExpenseDateBetweenOrderByExpenseDateDesc(
-                        user, start, LocalDate.now());
+                .findByUserIdAndExpenseDateBetweenOrderByExpenseDateDesc(
+                        userId, start, LocalDate.now());
 
         BigDecimal spentThisMonth = thisMonth.stream()
                 .map(Expense::getAmount)
@@ -88,7 +109,7 @@ public class GoalService {
                 : 0.0;
 
         String aiAdvice = aiService.generateBudgetAdvice(
-                user.getId(), LocalDate.now().getMonthValue(), LocalDate.now().getYear(),
+                userId, LocalDate.now().getMonthValue(), LocalDate.now().getYear(),
                 income, spentThisMonth, savingAmount,
                 investmentAmount, remaining);
 
@@ -162,6 +183,18 @@ public class GoalService {
         return buildGoalResponse(goal, income, savePct, avgMonthly);
     }
 
+    public List<GoalResponse> getGoals(UserPrincipal principal) {
+        BigDecimal income = principal.getMonthlyIncome() != null
+                ? principal.getMonthlyIncome() : BigDecimal.ZERO;
+        BigDecimal savePct = principal.getSavingPercentage() != null
+                ? principal.getSavingPercentage() : BigDecimal.valueOf(20);
+
+        return goalRepository.findByUserIdOrderByCreatedAtDesc(principal.getId())
+                .stream()
+                .map(g -> buildGoalResponse(g, income, savePct, BigDecimal.ZERO))
+                .collect(Collectors.toList());
+    }
+
     public List<GoalResponse> getGoals(String email) {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new BusinessException("User not found"));
@@ -202,6 +235,15 @@ public class GoalService {
         BigDecimal savePct = user.getSavingPercentage() != null
                 ? user.getSavingPercentage() : BigDecimal.valueOf(20);
         return buildGoalResponse(goal, income, savePct, BigDecimal.ZERO);
+    }
+
+    public void deleteGoal(UserPrincipal principal, UUID goalId) {
+        Goal goal = goalRepository.findById(goalId)
+                .orElseThrow(() -> new BusinessException("Goal not found"));
+        if (!goal.getUser().getId().equals(principal.getId())) {
+            throw new BusinessException("Unauthorized");
+        }
+        goalRepository.delete(goal);
     }
 
     public void deleteGoal(String email, UUID goalId) {
