@@ -4,13 +4,16 @@ import './index.css'
 import App from './App.jsx'
 import { AuthProvider } from './context/AuthContext.jsx'
 import { BudgetProvider } from './context/BudgetContext.jsx'
+import { BackendStatusProvider } from './context/BackendStatusContext.jsx'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    <AuthProvider>
-      <BudgetProvider>
-        <App />
-      </BudgetProvider>
-    </AuthProvider>
+    <BackendStatusProvider>
+      <AuthProvider>
+        <BudgetProvider>
+          <App />
+        </BudgetProvider>
+      </AuthProvider>
+    </BackendStatusProvider>
   </StrictMode>,
 )

@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import ProtectedRoute from './components/ProtectedRoute';
 import Navbar from './components/Navbar';
+import BackendStatusBanner from './components/BackendStatusBanner';
 import { Loader } from 'lucide-react';
 
 const Login = lazy(() => import('./pages/Login'));
@@ -35,6 +36,7 @@ const Layout = ({ children }) => (
 function App() {
   return (
     <BrowserRouter>
+      <BackendStatusBanner />
       <Suspense fallback={<PageLoader />}>
         <Routes>
           <Route path="/" element={<Navigate to="/dashboard" />} />

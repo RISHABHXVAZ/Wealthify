@@ -1,8 +1,10 @@
 import axios from 'axios';
 
+export const API_BASE_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) || 'http://localhost:8080';
+
 const API = axios.create({
   // Uses your Vercel URL in production, or falls back to localhost during local testing
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8080',
+  baseURL: API_BASE_URL,
 });
 
 // Public auth endpoints never need (and shouldn't send) a bearer token.
