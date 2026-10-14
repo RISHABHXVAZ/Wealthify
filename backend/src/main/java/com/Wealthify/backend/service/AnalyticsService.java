@@ -51,7 +51,7 @@ public class AnalyticsService {
 
         List<DailySummaryResponse> dailyBreakdown = byDay.entrySet().stream()
                 .sorted(Map.Entry.comparingByKey())
-                .map(e -> buildDailySummary(user.getId(), e.getKey(), e.getValue()))
+                .map(e -> buildDailySummary(user.getId(), e.getKey(), e.getValue(), false))
                 .collect(Collectors.toList());
 
         // Total spent
@@ -115,6 +115,10 @@ public class AnalyticsService {
     // ─── Private Helpers ────────────────────────────────────────────
 
     private DailySummaryResponse buildDailySummary(UUID userId, LocalDate date, List<Expense> expenses) {
+        return buildDailySummary(userId, date, expenses, true);
+    }
+
+    private DailySummaryResponse buildDailySummary(UUID userId, LocalDate date, List<Expense> expenses, boolean includeAiSummary) {
         BigDecimal totalSpent = expenses.stream()
                 .map(Expense::getAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -134,9 +138,12 @@ public class AnalyticsService {
                 .map(this::toExpenseItemDto)
                 .collect(Collectors.toList());
 
-        String aiSummary = expenses.isEmpty()
-                ? "No expenses recorded for this day."
-                : aiService.generateDailySummary(userId, date, totalSpent, spendingByCategory, wastefulCount);
+        String aiSummary = null;
+        if (includeAiSummary) {
+            aiSummary = expenses.isEmpty()
+                    ? "No expenses recorded for this day."
+                    : aiService.generateDailySummary(userId, date, totalSpent, spendingByCategory, wastefulCount);
+        }
 
         return DailySummaryResponse.builder()
                 .date(date)
