@@ -8,7 +8,7 @@ This runbook specifies the production deployment architecture, health probe sema
 
 | Component | Hosting Platform | Deployment Artifact | Primary Network / Port |
 | :--- | :--- | :--- | :--- |
-| **Frontend** | **Vercel** | SPA build ([`vercel.json`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/frontend/src/vercel.json)) | Client-side routing to Render backend |
+| **Frontend** | **Vercel** | SPA build ([`vercel.json`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/frontend/vercel.json)) | Client-side routing to Render backend |
 | **Backend** | **Render** | Docker container ([`backend/Dockerfile`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/Dockerfile)) | HTTP port `${PORT:8080}` |
 | **Database** | **Neon Cloud** | Serverless PostgreSQL | TLS connection via `SPRING_DATASOURCE_URL` |
 
