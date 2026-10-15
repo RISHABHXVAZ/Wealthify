@@ -53,6 +53,21 @@ flowchart TD
 
 ---
 
+## Application Preview
+
+| Financial Dashboard | 50/30/20 Budget Planner |
+| :---: | :---: |
+| ![Wealthify Financial Dashboard](docs/assets/dashboard.png)<br/><sub>**Dashboard**: Real-time spending overview, budget health status, and AI summaries</sub> | ![Wealthify 50/30/20 Budget Planner](docs/assets/budget-planner.png)<br/><sub>**Budget Planner**: 50/30/20 allocation engine with live preview breakdown</sub> |
+
+| Savings Goals & Wishlist Planning |
+| :---: |
+| ![Wealthify Savings Goals Tracker](docs/assets/savings-goals.png)<br/><sub>**Savings Goals**: Milestone tracking with automated monthly savings capacity guidance</sub> |
+
+> [!NOTE]
+> All interface previews showcase realistic, synthetic financial activity modeled after an Indian college student persona (₹10,000 monthly allowance, campus living expenses, and target savings milestones). No actual personal financial records or real identities are represented. In the dashboard view, the "Savings This Month" card (₹2,602) reflects remaining unspent income/surplus for the monthly period rather than realized cash transfers.
+
+---
+
 ## Core Features
 
 - **AI-Powered Expense Categorization**:
