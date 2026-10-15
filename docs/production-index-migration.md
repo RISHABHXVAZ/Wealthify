@@ -11,15 +11,15 @@ spring.jpa.hibernate.ddl-auto=validate
 Hibernate validates that database tables, columns, and constraints conform to JPA entity definitions without performing automatic schema mutations. Consequently, indexes must be applied deliberately by the database operator prior to or alongside production deployment.
 
 ### Intended Indexes
-The migration script is located at [`backend/src/main/resources/schema-indexes.sql`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/src/main/resources/schema-indexes.sql) and defines:
+The migration script is located at [`backend/src/main/resources/schema-indexes.sql`](../backend/src/main/resources/schema-indexes.sql) and defines:
 
 1. **`idx_expenses_user_date`** on table `expenses (user_id, expense_date)`
-   - Matches JPA definition on [`Expense.java`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/src/main/java/com/Wealthify/backend/entity/Expense.java):
+   - Matches JPA definition on [`Expense.java`](../backend/src/main/java/com/Wealthify/backend/entity/Expense.java):
      `@Index(name = "idx_expenses_user_date", columnList = "user_id, expense_date")`
    - Optimizes user-scoped date range filtering (`findByUserAndExpenseDateBetweenOrderByExpenseDateDesc`).
 
 2. **`idx_goals_user_created_at`** on table `goals (user_id, created_at)`
-   - Matches JPA definition on [`Goal.java`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/src/main/java/com/Wealthify/backend/entity/Goal.java):
+   - Matches JPA definition on [`Goal.java`](../backend/src/main/java/com/Wealthify/backend/entity/Goal.java):
      `@Index(name = "idx_goals_user_created_at", columnList = "user_id, created_at")`
    - Optimizes user-scoped chronological ordering (`findByUserOrderByCreatedAtDesc`).
 

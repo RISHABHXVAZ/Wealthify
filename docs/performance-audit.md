@@ -101,11 +101,11 @@ Below is an exhaustive breakdown of all 9 primary user journeys through the appl
 ---
 
 ### Journey 1: User Login (`POST /api/auth/login`)
-- **Frontend Trigger**: User enters email/password in [`Login.jsx`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/frontend/src/pages/Login.jsx) and clicks "Sign In".
+- **Frontend Trigger**: User enters email/password in [`Login.jsx`](../frontend/src/pages/Login.jsx) and clicks "Sign In".
 - **Frontend Action**: Calls `API.post('/api/auth/login', { email, password })`. Public route (bypasses `JwtFilter` token attachment).
 - **Backend Flow**:
-  1. [`AuthController.login`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/src/main/java/com/Wealthify/backend/controller/AuthController.java#L23): Delegates to `AuthService.login`.
-  2. [`AuthService.java#L39-L44`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/src/main/java/com/Wealthify/backend/service/AuthService.java#L39-L44):
+  1. [`AuthController.login`](../backend/src/main/java/com/Wealthify/backend/controller/AuthController.java#L23): Delegates to `AuthService.login`.
+  2. [`AuthService.java#L39-L44`](../backend/src/main/java/com/Wealthify/backend/service/AuthService.java#L39-L44):
      - Calls `authenticationManager.authenticate(...)` -> triggers `UserDetailServiceImpl.loadUserByUsername` -> **SQL Query 1**: `SELECT * FROM users WHERE email = ?`.
      - BCrypt password hash verification (CPU-intensive, ~80–120ms on dedicated CPU, up to 400ms on throttled vCPU).
      - Calls `userRepository.findByEmail(request.getEmail())` -> **SQL Query 2**: `SELECT * FROM users WHERE email = ?` (**Redundant database lookup!**).
@@ -118,11 +118,11 @@ Below is an exhaustive breakdown of all 9 primary user journeys through the appl
 ---
 
 ### Journey 2: Initial App Mount & Budget Preload (`GET /api/budget/allocation`)
-- **Frontend Trigger**: On application mount, [`BudgetContext.jsx#L12-L28`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/frontend/src/context/BudgetContext.jsx#L12-L28) detects an existing `token` and triggers `fetchBudget()`.
+- **Frontend Trigger**: On application mount, [`BudgetContext.jsx#L12-L28`](../frontend/src/context/BudgetContext.jsx#L12-L28) detects an existing `token` and triggers `fetchBudget()`.
 - **Backend Flow**:
   1. `JwtFilter`: Extracts token, validates claims, calls `UserDetailServiceImpl.loadUserByUsername` -> **SQL Query 1**: `SELECT * FROM users WHERE email = ?`.
-  2. [`GoalController.getBudgetAllocation`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/src/main/java/com/Wealthify/backend/controller/GoalController.java): Invokes `GoalService.getBudgetAllocation`.
-  3. [`GoalService.getBudgetAllocation`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/src/main/java/com/Wealthify/backend/service/GoalService.java#L131-L163):
+  2. [`GoalController.getBudgetAllocation`](../backend/src/main/java/com/Wealthify/backend/controller/GoalController.java): Invokes `GoalService.getBudgetAllocation`.
+  3. [`GoalService.getBudgetAllocation`](../backend/src/main/java/com/Wealthify/backend/service/GoalService.java#L131-L163):
      - Calls `userRepository.findByEmail(email)` -> **SQL Query 2**: `SELECT * FROM users WHERE email = ?` (**Redundant query!**).
      - Queries `goalRepository.findByUserOrderByCreatedAtDesc(user)` -> **SQL Query 3**: `SELECT * FROM goals WHERE user_id = ? ORDER BY created_at DESC`.
      - Queries `expenseRepository.findByUserAndExpenseDateBetweenOrderByExpenseDateDesc(user, start, end)` -> **SQL Query 4**: `SELECT * FROM expenses JOIN categories ... WHERE user_id = ? AND expense_date BETWEEN ? AND ?`.
@@ -134,7 +134,7 @@ Below is an exhaustive breakdown of all 9 primary user journeys through the appl
 ---
 
 ### Journey 3: Dashboard Page Load (`GET /api/analytics/daily` & `GET /api/analytics/monthly`)
-- **Frontend Trigger**: Navigating to `/dashboard`. [`Dashboard.jsx#L40-L43`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/frontend/src/pages/Dashboard.jsx#L40-L43) fires two concurrent API calls via `Promise.all`:
+- **Frontend Trigger**: Navigating to `/dashboard`. [`Dashboard.jsx#L40-L43`](../frontend/src/pages/Dashboard.jsx#L40-L43) fires two concurrent API calls via `Promise.all`:
   - `GET /api/analytics/daily`
   - `GET /api/analytics/monthly?month=${month}&year=${year}`
 - **Backend Flow (Daily Analytics)**:
@@ -145,7 +145,7 @@ Below is an exhaustive breakdown of all 9 primary user journeys through the appl
      - `aiService.generateDailySummary(...)`. Checks in-memory cache; on cache miss, calls Groq.
 - **Backend Flow (Monthly Analytics - CRITICAL BOTTLENECK)**:
   1. `JwtFilter`: **SQL Query 4**: `SELECT * FROM users WHERE email = ?`.
-  2. [`AnalyticsService.getMonthlySummary`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/src/main/java/com/Wealthify/backend/service/AnalyticsService.java#L40-L113):
+  2. [`AnalyticsService.getMonthlySummary`](../backend/src/main/java/com/Wealthify/backend/service/AnalyticsService.java#L40-L113):
      - **SQL Query 5**: `SELECT * FROM users WHERE email = ?` (Redundant).
      - **SQL Query 6**: `SELECT * FROM expenses JOIN categories ... WHERE user_id = ? AND expense_date BETWEEN ? AND ?`.
      - Lines 49–55: Groups expenses by day, then streams over each day and executes:
@@ -170,12 +170,12 @@ Below is an exhaustive breakdown of all 9 primary user journeys through the appl
 ---
 
 ### Journey 4: Expense Creation & Categorization (`POST /api/expenses`)
-- **Frontend Trigger**: User submits amount, description, and date in [`AddExpense.jsx`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/frontend/src/pages/AddExpense.jsx).
+- **Frontend Trigger**: User submits amount, description, and date in [`AddExpense.jsx`](../frontend/src/pages/AddExpense.jsx).
 - **Frontend Side-Effects**:
-  - On page mount, [`AddExpense.jsx#L15`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/frontend/src/pages/AddExpense.jsx#L15) fires `API.get('/api/categories')`. The received list is stored in component state `categories` but is **never rendered anywhere in the form** (dead code and wasted network request).
+  - On page mount, [`AddExpense.jsx#L15`](../frontend/src/pages/AddExpense.jsx#L15) fires `API.get('/api/categories')`. The received list is stored in component state `categories` but is **never rendered anywhere in the form** (dead code and wasted network request).
 - **Backend Flow**:
   1. `JwtFilter`: **SQL Query 1**: `SELECT * FROM users WHERE email = ?`.
-  2. [`ExpenseService.addExpense`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/src/main/java/com/Wealthify/backend/service/ExpenseService.java#L38-L110):
+  2. [`ExpenseService.addExpense`](../backend/src/main/java/com/Wealthify/backend/service/ExpenseService.java#L38-L110):
      - **SQL Query 2**: `SELECT * FROM users WHERE email = ?`.
      - **SQL Query 3**: `SELECT * FROM expenses WHERE user_id = ? AND expense_date BETWEEN 1st_of_month AND today` (calculates `spentSoFar`).
      - **Synchronous AI Categorization**: Lines 69–74 synchronously invoke `aiService.categorizeExpense(description, amount, income, spentSoFar)`. Blocks backend worker thread for 600ms–2000ms while waiting for Groq LLM completion.
@@ -190,7 +190,7 @@ Below is an exhaustive breakdown of all 9 primary user journeys through the appl
 ---
 
 ### Journey 5: Expense History & Monthly Filtering (`GET /api/expenses/month`)
-- **Frontend Trigger**: User opens [`Expenses.jsx`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/frontend/src/pages/Expenses.jsx) or changes month filter.
+- **Frontend Trigger**: User reviews monthly spending or changes the month filter in [`Reports.jsx`](../frontend/src/pages/Reports.jsx) or [`Dashboard.jsx`](../frontend/src/pages/Dashboard.jsx).
 - **Backend Flow**:
   1. `JwtFilter`: **SQL Query 1**: `SELECT * FROM users WHERE email = ?`.
   2. `ExpenseService.getExpensesByMonth`:
@@ -203,7 +203,7 @@ Below is an exhaustive breakdown of all 9 primary user journeys through the appl
 ---
 
 ### Journey 6: Reports & Visual Analytics (`GET /api/analytics/monthly`)
-- **Frontend Trigger**: User navigates to `/reports` in [`Reports.jsx`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/frontend/src/pages/Reports.jsx).
+- **Frontend Trigger**: User navigates to `/reports` in [`Reports.jsx`](../frontend/src/pages/Reports.jsx).
 - **Frontend Asset Chunk**: Dynamically loads `Reports-[hash].js` chunk containing `recharts` library (**376.15 KB raw / 111.42 KB gzip**).
 - **Frontend Request**: Calls `API.get('/api/analytics/monthly?month=${month}&year=${year}')`.
 - **Frontend Usage**:
@@ -218,7 +218,7 @@ Below is an exhaustive breakdown of all 9 primary user journeys through the appl
 ---
 
 ### Journey 7: Budget Setup & Allocation Refresh (`GET /api/budget/allocation` & `POST /api/budget/allocate`)
-- **Frontend Trigger**: Navigating to `/budget` in [`Budget.jsx`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/frontend/src/pages/Budget.jsx).
+- **Frontend Trigger**: Navigating to `/budget` in [`Budget.jsx`](../frontend/src/pages/Budget.jsx).
 - **Frontend Redundancy**:
   - `BudgetContext` has already fired `GET /api/budget/allocation` on app mount.
   - When `Budget.jsx` mounts, line 22 calls `useEffect(() => { fetchBudget(); }, [])`, initiating a **second identical `GET /api/budget/allocation` call concurrently**.
@@ -231,7 +231,7 @@ Below is an exhaustive breakdown of all 9 primary user journeys through the appl
 ---
 
 ### Journey 8: Goals Management (`GET /api/goals`, `POST /api/goals`, `POST /api/goals/{id}/save`)
-- **Frontend Trigger**: Navigating to `/goals` in [`Goals.jsx`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/frontend/src/pages/Goals.jsx).
+- **Frontend Trigger**: Navigating to `/goals` in [`Goals.jsx`](../frontend/src/pages/Goals.jsx).
 - **Backend Flow (Fetch Goals)**:
   1. `JwtFilter`: **SQL Query 1**: `SELECT * FROM users WHERE email = ?`.
   2. `GoalService.getGoals`:
@@ -247,7 +247,7 @@ Below is an exhaustive breakdown of all 9 primary user journeys through the appl
 ---
 
 ### Journey 9: Stock Advisory / Recommendation (`POST /api/stock-advisor/analyze`)
-- **Frontend Trigger**: User enters stock symbol and investment horizon in [`StockAdvisor.jsx`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/frontend/src/pages/StockAdvisor.jsx).
+- **Frontend Trigger**: User enters stock symbol and investment horizon in [`StockAdvisor.jsx`](../frontend/src/pages/StockAdvisor.jsx).
 - **Backend Flow**:
   1. `JwtFilter`: Validates token and loads user.
   2. `StockAdvisorService`: Calls Groq LLM with specialized market prompt.
@@ -260,7 +260,7 @@ Below is an exhaustive breakdown of all 9 primary user journeys through the appl
 ## 4. Baseline Measurements: Frontend Bundles & Backend Runtime
 
 ### Frontend Bundle Chunk Distribution (Vite Build)
-The frontend utilizes dynamic code splitting configured via `React.lazy()` in [`App.jsx`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/frontend/src/App.jsx).
+The frontend utilizes dynamic code splitting configured via `React.lazy()` in [`App.jsx`](../frontend/src/App.jsx).
 
 ```
 dist/
@@ -360,7 +360,7 @@ In historical Render deployment logs, Spring Boot emitted:
 ## 6. Detailed Findings & Evidence (P0 to P3)
 
 ### [P0] Sequential N-Day Outbound LLM Loop in Monthly Analytics
-- **File & Lines**: [`AnalyticsService.java#L49-L55`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/src/main/java/com/Wealthify/backend/service/AnalyticsService.java#L49-L55) and [`buildDailySummary#L137-L140`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/src/main/java/com/Wealthify/backend/service/AnalyticsService.java#L137-L140)
+- **File & Lines**: [`AnalyticsService.java#L49-L55`](../backend/src/main/java/com/Wealthify/backend/service/AnalyticsService.java#L49-L55) and [`buildDailySummary#L137-L140`](../backend/src/main/java/com/Wealthify/backend/service/AnalyticsService.java#L137-L140)
 - **Mechanism**:
   When `getMonthlySummary(email, month, year)` is called, it groups expenses by date and calls `buildDailySummary()` for every distinct day:
   ```java
@@ -379,12 +379,12 @@ In historical Render deployment logs, Spring Boot emitted:
 - **Impact**:
   For an active user with expenses across 20 days in a month, `aiService.generateDailySummary` is called **20 times sequentially**, plus 1 monthly summary, plus 1 AI tips call. At ~600ms per Groq call, this represents **13.2 seconds of synchronous HTTP blocking** inside a single user request!
 - **UI Inconsistency**:
-  Neither [`Dashboard.jsx`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/frontend/src/pages/Dashboard.jsx) nor [`Reports.jsx`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/frontend/src/pages/Reports.jsx) renders or displays `dailyBreakdown[i].aiSummary`. In `Reports.jsx`, only `date` and `totalSpent` are extracted for the bar chart. Generating AI summaries for individual days inside the monthly report is 100% wasted latency and API cost.
+  Neither [`Dashboard.jsx`](../frontend/src/pages/Dashboard.jsx) nor [`Reports.jsx`](../frontend/src/pages/Reports.jsx) renders or displays `dailyBreakdown[i].aiSummary`. In `Reports.jsx`, only `date` and `totalSpent` are extracted for the bar chart. Generating AI summaries for individual days inside the monthly report is 100% wasted latency and API cost.
 
 ---
 
 ### [P1] Missing Axios Request Timeout on Frontend
-- **File & Lines**: [`frontend/src/api/axios.js#L3-L6`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/frontend/src/api/axios.js#L3-L6)
+- **File & Lines**: [`frontend/src/api/axios.js#L3-L6`](../frontend/src/api/axios.js#L3-L6)
 - **Mechanism**:
   ```javascript
   const API = axios.create({
@@ -399,11 +399,11 @@ In historical Render deployment logs, Spring Boot emitted:
 
 ### [P1] Duplicate Remote User Queries on Every Authenticated Request
 - **File & Lines**:
-  - [`JwtFilter.java#L46`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/src/main/java/com/Wealthify/backend/security/JwtFilter.java#L46)
-  - [`UserDetailServiceImpl.java#L16`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/src/main/java/com/Wealthify/backend/security/UserDetailServiceImpl.java#L16)
-  - [`AnalyticsService.java#L39`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/src/main/java/com/Wealthify/backend/service/AnalyticsService.java#L39)
-  - [`ExpenseService.java#L40`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/src/main/java/com/Wealthify/backend/service/ExpenseService.java#L40)
-  - [`GoalService.java#L38`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/src/main/java/com/Wealthify/backend/service/GoalService.java#L38)
+  - [`JwtFilter.java#L46`](../backend/src/main/java/com/Wealthify/backend/security/JwtFilter.java#L46)
+  - [`UserDetailServiceImpl.java#L16`](../backend/src/main/java/com/Wealthify/backend/security/UserDetailServiceImpl.java#L16)
+  - [`AnalyticsService.java#L39`](../backend/src/main/java/com/Wealthify/backend/service/AnalyticsService.java#L39)
+  - [`ExpenseService.java#L40`](../backend/src/main/java/com/Wealthify/backend/service/ExpenseService.java#L40)
+  - [`GoalService.java#L38`](../backend/src/main/java/com/Wealthify/backend/service/GoalService.java#L38)
 - **Mechanism**:
   On every incoming request with a `Bearer` token:
   1. `JwtFilter` calls `userDetailsService.loadUserByUsername(email)`, executing `SELECT * FROM users WHERE email = ?` over the WAN to Neon.
@@ -414,7 +414,7 @@ In historical Render deployment logs, Spring Boot emitted:
 ---
 
 ### [P1] Synchronous AI Latency on Expense Creation
-- **File & Lines**: [`ExpenseService.java#L69-L74`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/src/main/java/com/Wealthify/backend/service/ExpenseService.java#L69-L74)
+- **File & Lines**: [`ExpenseService.java#L69-L74`](../backend/src/main/java/com/Wealthify/backend/service/ExpenseService.java#L69-L74)
 - **Mechanism**:
   When adding an expense, `ExpenseService.addExpense()` synchronously halts execution while calling `aiService.categorizeExpense(...)`.
 - **Impact**:
@@ -423,7 +423,7 @@ In historical Render deployment logs, Spring Boot emitted:
 ---
 
 ### [P1] Unbounded Expense History (Missing Pagination)
-- **File & Lines**: [`ExpenseRepository.java#L18`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/src/main/java/com/Wealthify/backend/repository/ExpenseRepository.java#L18)
+- **File & Lines**: [`ExpenseRepository.java#L18`](../backend/src/main/java/com/Wealthify/backend/repository/ExpenseRepository.java#L18)
 - **Mechanism**:
   `List<Expense> findByUserOrderByExpenseDateDesc(User user);` returns an unbounded list of all historical expenses.
 - **Impact**:
@@ -432,9 +432,9 @@ In historical Render deployment logs, Spring Boot emitted:
 ---
 
 ### [P1] Misplaced `vercel.json` & Missing Static Asset Cache Headers
-- **File & Lines**: [`frontend/src/vercel.json`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/frontend/src/vercel.json)
+- **File & Lines**: [`frontend/vercel.json`](../frontend/vercel.json)
 - **Mechanism**:
-  1. The file is placed at `frontend/src/vercel.json` rather than the frontend root directory (`frontend/vercel.json`).
+  1. The file was historically placed at `frontend/src/vercel.json` rather than the frontend root directory (`frontend/vercel.json`).
   2. The configuration only defines SPA rewrites:
      ```json
      {
@@ -450,7 +450,7 @@ In historical Render deployment logs, Spring Boot emitted:
 ---
 
 ### [P1] Unapplied Production Composite Database Indexes
-- **File & Lines**: [`backend/src/main/resources/schema-indexes.sql`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/src/main/resources/schema-indexes.sql)
+- **File & Lines**: [`backend/src/main/resources/schema-indexes.sql`](../backend/src/main/resources/schema-indexes.sql)
 - **Mechanism**:
   Entity classes define `@Index(name = "idx_expenses_user_date", columnList = "user_id, expense_date")` and `@Index(name = "idx_goals_user_created_at", columnList = "user_id, created_at")`. However, production uses `spring.jpa.hibernate.ddl-auto=validate`, which does NOT create missing indexes.
 - **Impact**:
@@ -460,15 +460,15 @@ In historical Render deployment logs, Spring Boot emitted:
 
 ### [P2] Redundant Frontend API Requests on Mount
 - **File & Lines**:
-  - [`AddExpense.jsx#L14-L16`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/frontend/src/pages/AddExpense.jsx#L14-L16): Calls `API.get('/api/categories')` into state variable `categories` that is never rendered in JSX.
-  - [`Budget.jsx#L21-L23`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/frontend/src/pages/Budget.jsx#L21-L23): Calls `fetchBudget()` (`/api/budget/allocation`) on mount while `BudgetContext` simultaneously fires the exact same request.
+  - [`AddExpense.jsx#L14-L16`](../frontend/src/pages/AddExpense.jsx#L14-L16): Calls `API.get('/api/categories')` into state variable `categories` that is never rendered in JSX.
+  - [`Budget.jsx#L21-L23`](../frontend/src/pages/Budget.jsx#L21-L23): Calls `fetchBudget()` (`/api/budget/allocation`) on mount while `BudgetContext` simultaneously fires the exact same request.
 - **Impact**:
   Unnecessary HTTP requests waste bandwidth, trigger redundant backend database lookups, and consume worker threads.
 
 ---
 
 ### [P2] Default HikariCP Connection Pool Settings
-- **File & Lines**: [`application.properties`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/src/main/resources/application.properties)
+- **File & Lines**: [`application.properties`](../backend/src/main/resources/application.properties)
 - **Mechanism**:
   Zero `spring.datasource.hikari.*` settings are defined. Specifically:
   - `spring.datasource.hikari.keepalive-time` is at its default (`0`, disabled).
@@ -480,7 +480,7 @@ In historical Render deployment logs, Spring Boot emitted:
 ---
 
 ### [P2] Redundant User Lookups on Login
-- **File & Lines**: [`AuthService.java#L40-L45`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/src/main/java/com/Wealthify/backend/service/AuthService.java#L40-L45)
+- **File & Lines**: [`AuthService.java#L40-L45`](../backend/src/main/java/com/Wealthify/backend/service/AuthService.java#L40-L45)
 - **Mechanism**:
   `authenticationManager.authenticate()` queries user details from the database. Immediately after, `AuthService` queries `userRepository.findByEmail(request.getEmail())` again.
 - **Impact**:
@@ -489,7 +489,7 @@ In historical Render deployment logs, Spring Boot emitted:
 ---
 
 ### [P2] Uncached Global Category Table
-- **File & Lines**: [`CategoryRepository.java`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/src/main/java/com/Wealthify/backend/repository/CategoryRepository.java) & [`CategoryService.java`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/src/main/java/com/Wealthify/backend/service/CategoryService.java)
+- **File & Lines**: [`CategoryRepository.java`](../backend/src/main/java/com/Wealthify/backend/repository/CategoryRepository.java) & [`CategoryService.java`](../backend/src/main/java/com/Wealthify/backend/service/CategoryService.java)
 - **Mechanism**:
   The system contains 15 static categories seeded at startup. Every call to `CategoryService.getAllCategories()` executes `categoryRepository.findAll()`, querying the database table repeatedly.
 - **Impact**:
@@ -498,7 +498,7 @@ In historical Render deployment logs, Spring Boot emitted:
 ---
 
 ### [P3] Container JVM Startup Tuning
-- **File & Lines**: [`backend/Dockerfile#L19`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/Dockerfile#L19)
+- **File & Lines**: [`backend/Dockerfile#L19`](../backend/Dockerfile#L19)
 - **Mechanism**:
   `ENTRYPOINT ["java", "-jar", "app.jar"]` launches the JVM with default ergonomics.
 - **Impact**:
@@ -507,7 +507,7 @@ In historical Render deployment logs, Spring Boot emitted:
 ---
 
 ### [P3] Missing Real-User Monitoring (RUM) Telemetry
-- **File & Lines**: [`frontend/package.json`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/frontend/package.json)
+- **File & Lines**: [`frontend/package.json`](../frontend/package.json)
 - **Mechanism**:
   No `@vercel/speed-insights` or `web-vitals` library is integrated into the client application.
 - **Impact**:
@@ -523,7 +523,7 @@ In historical Render deployment logs, Spring Boot emitted:
 | **2** | **OPT-02** | [P1] Missing Axios request timeout on frontend | Set `timeout: 15000` (15s) in `frontend/src/api/axios.js` with global interceptor toast for cold-start wakeups. | **High** (prevents infinite UI hangs) | High (100%) | Low | Low (5 LOC) |
 | **3** | **OPT-03** | [P1] Duplicate user DB lookups per authenticated request | Cache or pass authenticated user principal from `JwtFilter` / SecurityContext instead of re-querying `userRepository.findByEmail`. | **High** (saves 30–120ms WAN per call) | High (95%) | Low | Medium (25 LOC) |
 | **4** | **OPT-04** | [P1] Misplaced `vercel.json` & missing static cache headers | Move `vercel.json` to `frontend/vercel.json`; add `Cache-Control: public, max-age=31536000, immutable` for `/assets/*`. | **High** (eliminates repeat asset loads) | High (100%) | Low | Low (1 file move + config) |
-| **5** | **OPT-05** | [P1] Apply production database indexes in Neon | Execute [`schema-indexes.sql`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/src/main/resources/schema-indexes.sql) (`idx_expenses_user_date`, `idx_goals_user_created_at`) via Neon SQL console. | **High** (avoids full table scans) | High (100%) | Very Low | Operator Action (2 mins) |
+| **5** | **OPT-05** | [P1] Apply production database indexes in Neon | Execute [`schema-indexes.sql`](../backend/src/main/resources/schema-indexes.sql) (`idx_expenses_user_date`, `idx_goals_user_created_at`) via Neon SQL console. | **High** (avoids full table scans) | High (100%) | Very Low | Operator Action (2 mins) |
 | **6** | **OPT-06** | [P2] Redundant frontend API requests on mount | Remove dead `API.get('/api/categories')` in `AddExpense.jsx`; remove duplicate `fetchBudget()` in `Budget.jsx` (use `BudgetContext`). | **Medium** (removes 2 dead network calls) | High (100%) | Very Low | Low (15 LOC) |
 | **7** | **OPT-07** | [P2] Configure HikariCP connection pool & keepalive | Add `spring.datasource.hikari.keepalive-time=30000`, `max-lifetime=600000`, `minimum-idle=2`, `maximum-pool-size=10`. | **Medium** (prevents stale Neon sockets) | High (95%) | Low | Low (5 lines properties) |
 | **8** | **OPT-08** | [P2] In-memory cache for static Category list | Annotate `CategoryService.getAllCategories()` with `@Cacheable("categories")` or store in static immutable map. | **Medium** (avoids DB queries for categories) | High (95%) | Very Low | Low (10 LOC) |
@@ -567,7 +567,7 @@ In historical Render deployment logs, Spring Boot emitted:
 | :--- | :--- | :--- | :--- |
 | **`spring.jpa.hibernate.ddl-auto`** | Defaulted to `validate` in `application.properties`. | Evaluates to `validate` via `${SPRING_JPA_HIBERNATE_DDL_AUTO:validate}`. | **Schema is locked**. Indexes in `schema-indexes.sql` will never be applied automatically. |
 | **`server.port`** | `server.port=${PORT:8080}` | Render dynamically injects `PORT=10000` or random port. | Fully compatible. Spring binds correctly to Render's injected port. |
-| **`vercel.json` Location** | Located at `frontend/src/vercel.json`. | Vercel expects configuration in root of project (`frontend/vercel.json`). | Rewrites or future header directives may not be applied by Vercel. |
+| **`vercel.json` Location** | Located at [`frontend/vercel.json`](../frontend/vercel.json) (remediated from historical `frontend/src/vercel.json`). | Vercel expects configuration in root of project (`frontend/vercel.json`). | Configuration properly loaded from frontend root. |
 | **Vercel Static Caching** | No `headers` declared in `vercel.json`. | Vercel defaults to standard heuristic edge caching without immutable flag. | Browser re-validates hashed chunk assets on subsequent visits. |
 | **Hikari Connection Pool** | Zero properties specified in `application.properties`. | Defaults: `keepalive-time=0`, `max-pool-size=10`. | Connections dropped by Neon idle proxy cause socket reset errors. |
 | **Render Logging Level** | Default `INFO` across all packages. | Default `INFO` in Render environment variables. | Cannot observe exact Hikari connection acquisition or Hibernate validation times without `DEBUG` flags. |

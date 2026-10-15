@@ -20,7 +20,7 @@ Tokens are obtained by logging in via `POST /api/auth/login`. Unauthenticated re
 
 ## 1. Authentication Endpoints (`/api/auth`)
 
-Controller: [`AuthController.java`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/src/main/java/com/Wealthify/backend/controller/AuthController.java)
+Controller: [`AuthController.java`](../backend/src/main/java/com/Wealthify/backend/controller/AuthController.java)
 
 ### Register User
 - **Method**: `POST`
@@ -31,8 +31,7 @@ Controller: [`AuthController.java`](file:///c:/Users/Rishabh%20Srivastava/OneDri
   {
     "name": "Rishabh",
     "email": "user@example.com",
-    "password": "SecurePassword123!",
-    "monthlyIncome": 25000.00
+    "password": "SecurePassword123!"
   }
   ```
 - **Response** (`200 OK`): String confirmation message (`"User registered successfully"`).
@@ -54,8 +53,7 @@ Controller: [`AuthController.java`](file:///c:/Users/Rishabh%20Srivastava/OneDri
   {
     "token": "eyJhbGciOiJIUzI1NiJ9...",
     "name": "Rishabh",
-    "email": "user@example.com",
-    "monthlyIncome": 25000.00
+    "email": "user@example.com"
   }
   ```
 
@@ -100,7 +98,7 @@ Controller: [`AuthController.java`](file:///c:/Users/Rishabh%20Srivastava/OneDri
 
 ## 2. Expenses Endpoints (`/api/expenses`)
 
-Controller: [`ExpenseController.java`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/src/main/java/com/Wealthify/backend/controller/ExpenseController.java)
+Controller: [`ExpenseController.java`](../backend/src/main/java/com/Wealthify/backend/controller/ExpenseController.java)
 
 ### Add Expense (AI-Categorized)
 - **Method**: `POST`
@@ -109,26 +107,31 @@ Controller: [`ExpenseController.java`](file:///c:/Users/Rishabh%20Srivastava/One
 - **Request Body**:
   ```json
   {
-    "title": "Swiggy dinner order",
     "amount": 350.00,
-    "date": "2026-10-15",
-    "categoryName": "Food & Dining",
-    "notes": "Late night study session"
+    "description": "Swiggy dinner order",
+    "categoryId": 1,
+    "expenseDate": "2026-10-15",
+    "splitCount": 1
   }
   ```
 - **Response** (`200 OK`):
   ```json
   {
     "id": "e4b3e8a0-2f9b-4e89-a2e6-81cf43c683b1",
-    "title": "Swiggy dinner order",
     "amount": 350.00,
+    "description": "Swiggy dinner order",
+    "category": {
+      "id": 1,
+      "name": "Food & Dining",
+      "type": "WANT",
+      "isEssential": false
+    },
+    "aiCategoryConfidence": 0.95,
+    "isFlaggedWasteful": false,
+    "flaggedWasteful": false,
+    "aiReason": "Dining out rather than home cooking; discretionary food expenditure",
     "expenseDate": "2026-10-15",
-    "category": "Food & Dining",
-    "type": "WANT",
-    "wasteful": false,
-    "confidence": 0.95,
-    "reason": "Dining out rather than home cooking; discretionary food expenditure",
-    "notes": "Late night study session"
+    "createdAt": "2026-10-15T21:30:00"
   }
   ```
 - **AI Integration**: Automatically queries Groq LLM to categorize the expense, determine spending type (`NEED` vs. `WANT`), and evaluate wastefulness based on remaining monthly budget. Returns safe fallback defaults if Groq is slow or unreachable.
@@ -166,7 +169,7 @@ Controller: [`ExpenseController.java`](file:///c:/Users/Rishabh%20Srivastava/One
 
 ## 3. Budget & Income Endpoints
 
-Controllers: [`GoalController.java`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/src/main/java/com/Wealthify/backend/controller/GoalController.java), [`InsightController.java`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/src/main/java/com/Wealthify/backend/controller/InsightController.java)
+Controllers: [`GoalController.java`](../backend/src/main/java/com/Wealthify/backend/controller/GoalController.java), [`InsightController.java`](../backend/src/main/java/com/Wealthify/backend/controller/InsightController.java)
 
 ### Configure Budget Allocation
 - **Method**: `POST`
@@ -175,21 +178,30 @@ Controllers: [`GoalController.java`](file:///c:/Users/Rishabh%20Srivastava/OneDr
 - **Request Body**:
   ```json
   {
-    "monthlyIncome": 30000.00,
+    "monthlyIncome": 10000.00,
     "savingPercentage": 20.0,
     "investmentPercentage": 10.0
   }
   ```
+- **Allocation Formula**:
+  - `savingPercentage`: Percentage of total income targeted for savings (`monthlyIncome * savingPercentage / 100`, e.g., 20% of ₹10,000 = ₹2,000).
+  - `investmentPercentage`: Percentage of the monthly savings targeted for investments (`monthlySavingAmount * investmentPercentage / 100`, e.g., 10% of ₹2,000 = ₹200).
+  - `availableForExpenditure`: Total income remaining after savings quota (`monthlyIncome - monthlySavingAmount`, e.g., ₹8,000).
 - **Response** (`200 OK`):
   ```json
   {
-    "monthlyIncome": 30000.00,
-    "needsBudget": 15000.00,
-    "wantsBudget": 9000.00,
-    "savingsBudget": 6000.00,
-    "totalSpent": 12450.00,
-    "remainingBudget": 17550.00,
-    "budgetStatus": "HEALTHY"
+    "monthlyIncome": 10000.00,
+    "savingPercentage": 20.0,
+    "investmentPercentage": 10.0,
+    "monthlySavingAmount": 2000.00,
+    "monthlyInvestmentAmount": 200.00,
+    "availableForExpenditure": 8000.00,
+    "spentThisMonth": 7398.00,
+    "remainingBudget": 602.00,
+    "isOverBudget": false,
+    "wastefulThisMonth": 3599.00,
+    "budgetUsedPercentage": 92.48,
+    "aiAdvice": "Your spending is within limits. Consider curbing food deliveries to preserve your savings target."
   }
   ```
 
@@ -197,7 +209,7 @@ Controllers: [`GoalController.java`](file:///c:/Users/Rishabh%20Srivastava/OneDr
 - **Method**: `GET`
 - **Path**: `/api/budget/allocation`
 - **Access**: Authenticated
-- **Response** (`200 OK`): `BudgetAllocationResponse` containing target split, current spent totals, remaining budget, and status (`HEALTHY`, `CAUTION`, `CRITICAL`).
+- **Response** (`200 OK`): `BudgetAllocationResponse` containing target split, current spent totals, remaining budget, wasteful spending total, and budget usage status.
 
 ### Update Monthly Income Directly
 - **Method**: `POST`
@@ -215,7 +227,7 @@ Controllers: [`GoalController.java`](file:///c:/Users/Rishabh%20Srivastava/OneDr
 
 ## 4. Savings Goals Endpoints (`/api/goals`)
 
-Controller: [`GoalController.java`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/src/main/java/com/Wealthify/backend/controller/GoalController.java)
+Controller: [`GoalController.java`](../backend/src/main/java/com/Wealthify/backend/controller/GoalController.java)
 
 ### Create Savings Goal
 - **Method**: `POST`
@@ -224,7 +236,7 @@ Controller: [`GoalController.java`](file:///c:/Users/Rishabh%20Srivastava/OneDri
 - **Request Body**:
   ```json
   {
-    "title": "New Laptop for College",
+    "itemName": "New Laptop for College",
     "targetAmount": 65000.00,
     "targetDate": "2027-04-30"
   }
@@ -233,12 +245,17 @@ Controller: [`GoalController.java`](file:///c:/Users/Rishabh%20Srivastava/OneDri
   ```json
   {
     "id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
-    "title": "New Laptop for College",
+    "itemName": "New Laptop for College",
     "targetAmount": 65000.00,
-    "savedAmount": 0.00,
     "targetDate": "2027-04-30",
-    "status": "IN_PROGRESS",
-    "aiAdvice": "To reach ₹65,000 by April 2027, allocate ₹3,611 monthly from your savings quota."
+    "currentSaved": 0.00,
+    "status": "ACTIVE",
+    "aiPlan": "To reach ₹65,000 by April 2027, allocate ₹3,611 monthly from your savings quota.",
+    "requiredMonthlySaving": 3611.11,
+    "monthsRemaining": 18,
+    "progressPercentage": 0.0,
+    "isAchievable": true,
+    "achievabilityReason": "Required monthly saving fits within projected savings allocation."
   }
   ```
 
@@ -250,10 +267,10 @@ Controller: [`GoalController.java`](file:///c:/Users/Rishabh%20Srivastava/OneDri
 
 ### Contribute to Goal Savings
 - **Method**: `PATCH`
-- **Path**: `/api/goals/{id}/save?amount=2500.00`
+- **Path**: `/api/goals/{id}/save`
 - **Access**: Authenticated
-- **Query Parameter**: `amount` (Positive decimal number)
-- **Response** (`200 OK`): Updated `GoalResponse` record. If `savedAmount >= targetAmount`, status transitions to `COMPLETED`.
+- **Query Parameter**: `amount` (Positive decimal number, e.g., `/api/goals/{id}/save?amount=2500.00`)
+- **Response** (`200 OK`): Updated `GoalResponse` record. If `currentSaved >= targetAmount`, status transitions to `ACHIEVED`.
 
 ### Delete Goal
 - **Method**: `DELETE`
@@ -266,7 +283,7 @@ Controller: [`GoalController.java`](file:///c:/Users/Rishabh%20Srivastava/OneDri
 
 ## 5. Analytics Endpoints (`/api/analytics`)
 
-Controller: [`AnalyticsController.java`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/src/main/java/com/Wealthify/backend/controller/AnalyticsController.java)
+Controller: [`AnalyticsController.java`](../backend/src/main/java/com/Wealthify/backend/controller/AnalyticsController.java)
 
 ### Daily Analytics Summary
 - **Method**: `GET`
@@ -278,11 +295,21 @@ Controller: [`AnalyticsController.java`](file:///c:/Users/Rishabh%20Srivastava/O
   {
     "date": "2026-10-15",
     "totalSpent": 450.00,
-    "expenseCount": 2,
-    "byCategory": {
+    "totalTransactions": 2,
+    "spendingByCategory": {
       "Food & Dining": 350.00,
       "Transportation": 100.00
     },
+    "expenses": [
+      {
+        "id": "e4b3e8a0-2f9b-4e89-a2e6-81cf43c683b1",
+        "description": "Swiggy dinner order",
+        "amount": 350.00,
+        "categoryName": "Food & Dining",
+        "expenseDate": "2026-10-15",
+        "flaggedWasteful": false
+      }
+    ],
     "wastefulCount": 0,
     "wastefulAmount": 0.00,
     "aiSummary": "Spending remained within daily limits. No wasteful expenses detected."
@@ -302,10 +329,11 @@ Controller: [`AnalyticsController.java`](file:///c:/Users/Rishabh%20Srivastava/O
     "month": 10,
     "year": 2026,
     "totalSpent": 12450.00,
-    "monthlyIncome": 30000.00,
+    "totalIncome": 30000.00,
     "savingsAmount": 17550.00,
-    "budgetStatus": "HEALTHY",
-    "topCategories": {
+    "savingsPercentage": 58.5,
+    "totalTransactions": 14,
+    "spendingByCategory": {
       "Food & Dining": 5200.00,
       "Books & Academic": 3100.00,
       "Entertainment": 2150.00
@@ -314,9 +342,21 @@ Controller: [`AnalyticsController.java`](file:///c:/Users/Rishabh%20Srivastava/O
       {
         "date": "2026-10-01",
         "totalSpent": 420.00,
-        "expenseCount": 2,
-        "wastefulCount": 0
+        "totalTransactions": 2,
+        "spendingByCategory": {
+          "Food & Dining": 420.00
+        },
+        "expenses": [],
+        "wastefulCount": 0,
+        "wastefulAmount": 0.00,
+        "aiSummary": null
       }
+    ],
+    "wastefulAmount": 1850.00,
+    "wastefulPercentage": 14.86,
+    "aiSummary": "Discretionary spending accounted for 14.8% of your expenses.",
+    "aiTips": [
+      "Limit weekend food delivery to reduce non-essential spending."
     ]
   }
   ```
@@ -326,7 +366,7 @@ Controller: [`AnalyticsController.java`](file:///c:/Users/Rishabh%20Srivastava/O
 
 ## 6. Insights & Stock Advisory Endpoints
 
-Controller: [`InsightController.java`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/src/main/java/com/Wealthify/backend/controller/InsightController.java)
+Controller: [`InsightController.java`](../backend/src/main/java/com/Wealthify/backend/controller/InsightController.java)
 
 ### Wasteful Spending Analysis
 - **Method**: `GET`
@@ -360,32 +400,29 @@ Controller: [`InsightController.java`](file:///c:/Users/Rishabh%20Srivastava/One
 - **Response** (`200 OK`):
   ```json
   {
-    "surplusAmount": 6000.00,
-    "riskAppetite": "MODERATE",
+    "monthlyIncome": 10000.00,
+    "totalMonthlyExpenses": 7398.00,
+    "investableSurplus": 2602.00,
+    "savingsRate": 26.02,
     "recommendations": [
       {
-        "assetClass": "Index ETF (Nifty 50)",
-        "instrument": "NIFTYBEES / UTI Nifty 50 Index Fund",
-        "allocationPercentage": 50.0,
-        "recommendedAmount": 3000.00,
-        "rationale": "Low-cost foundational equity exposure suitable for long-term student investment."
+        "ticker": "NIFTYBEES",
+        "name": "Nippon India ETF Nifty 50 BeES",
+        "type": "ETF",
+        "riskLevel": "LOW",
+        "reason": "Foundational low-cost passive index exposure ideal for disciplined monthly SIPs.",
+        "suggestedAllocation": "50% of investable surplus (~₹1,300/mo)"
       },
       {
-        "assetClass": "Gold ETF / Sovereign Gold Bonds",
-        "instrument": "GOLDBEES",
-        "allocationPercentage": 20.0,
-        "recommendedAmount": 1200.00,
-        "rationale": "Hedge against inflation with liquid exposure to gold."
-      },
-      {
-        "assetClass": "Liquid Mutual Funds / High-Yield Savings",
-        "instrument": "Overnight / Liquid Debt Funds",
-        "allocationPercentage": 30.0,
-        "recommendedAmount": 1800.00,
-        "rationale": "Emergency reserve fund maintaining capital safety and same-day liquidity."
+        "ticker": "GOLDBEES",
+        "name": "Nippon India ETF Gold BeES",
+        "type": "ETF",
+        "riskLevel": "LOW",
+        "reason": "Hedge against inflation with liquid gold investment.",
+        "suggestedAllocation": "20% of investable surplus (~₹520/mo)"
       }
     ],
-    "disclaimer": "Informational educational suggestions tailored for student budgets. Not formal SEBI-registered financial advisory."
+    "aiRationale": "Based on a monthly income of ₹10,000 and ₹2,602 surplus, a conservative 50/20 index-and-gold allocation provides stable compounding without excessive volatility."
   }
   ```
 
@@ -393,13 +430,29 @@ Controller: [`InsightController.java`](file:///c:/Users/Rishabh%20Srivastava/One
 
 ## 7. Expense Categories Endpoints (`/api/categories`)
 
-Controller: [`CategoryController.java`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/src/main/java/com/Wealthify/backend/controller/CategoryController.java)
+Controller: [`CategoryController.java`](../backend/src/main/java/com/Wealthify/backend/controller/CategoryController.java)
 
 ### List All Categories
 - **Method**: `GET`
 - **Path**: `/api/categories`
 - **Access**: Authenticated
-- **Response** (`200 OK`): Array of standard and custom categories (`id`, `name`, `icon`, `type`).
+- **Response** (`200 OK`): Array of standard and custom categories (`id`, `name`, `type`, `isEssential`).
+  ```json
+  [
+    {
+      "id": 1,
+      "name": "Food & Dining",
+      "type": "WANT",
+      "isEssential": false
+    },
+    {
+      "id": 2,
+      "name": "Academic & Books",
+      "type": "NEED",
+      "isEssential": true
+    }
+  ]
+  ```
 
 ### Create Custom Category
 - **Method**: `POST`
@@ -409,8 +462,8 @@ Controller: [`CategoryController.java`](file:///c:/Users/Rishabh%20Srivastava/On
   ```json
   {
     "name": "Hostel Supplies",
-    "icon": "home",
-    "type": "NEED"
+    "type": "NEED",
+    "isEssential": true
   }
   ```
 - **Response** (`200 OK`): Created `CategoryDto`.
@@ -419,7 +472,7 @@ Controller: [`CategoryController.java`](file:///c:/Users/Rishabh%20Srivastava/On
 
 ## 8. System Health Probes (`/actuator/health`)
 
-Configuration: [`SecurityConfig.java`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/src/main/java/com/Wealthify/backend/config/SecurityConfig.java), [`application.properties`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/src/main/resources/application.properties)
+Configuration: [`SecurityConfig.java`](../backend/src/main/java/com/Wealthify/backend/config/SecurityConfig.java), [`application.properties`](../backend/src/main/resources/application.properties)
 
 | Endpoint | Access | Probe Group | Components Evaluated | Response Payload |
 | :--- | :--- | :--- | :--- | :--- |

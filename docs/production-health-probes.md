@@ -8,8 +8,8 @@ This runbook specifies the production deployment architecture, health probe sema
 
 | Component | Hosting Platform | Deployment Artifact | Primary Network / Port |
 | :--- | :--- | :--- | :--- |
-| **Frontend** | **Vercel** | SPA build ([`vercel.json`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/frontend/vercel.json)) | Client-side routing to Render backend |
-| **Backend** | **Render** | Docker container ([`backend/Dockerfile`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/Dockerfile)) | HTTP port `${PORT:8080}` |
+| **Frontend** | **Vercel** | SPA build ([`vercel.json`](../frontend/vercel.json)) | Client-side routing to Render backend |
+| **Backend** | **Render** | Docker container ([`backend/Dockerfile`](../backend/Dockerfile)) | HTTP port `${PORT:8080}` |
 | **Database** | **Neon Cloud** | Serverless PostgreSQL | TLS connection via `SPRING_DATASOURCE_URL` |
 
 ### Configuration Status
@@ -25,7 +25,7 @@ This runbook specifies the production deployment architecture, health probe sema
 
 Render automatically provisions and assigns an internal listening port via the `PORT` environment variable (commonly defaulting to `10000` or a dynamically assigned port).
 
-In [`backend/src/main/resources/application.properties`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/src/main/resources/application.properties#L4-L5):
+In [`backend/src/main/resources/application.properties`](../backend/src/main/resources/application.properties#L4-L5):
 ```properties
 # Server Config
 server.port=${PORT:8080}
@@ -104,7 +104,7 @@ Operators must understand the trade-off of including database health in Render's
 
 ## Information-Disclosure & Security Verification
 
-All health endpoints are hardened against information leakage in [`SecurityConfig.java`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/src/main/java/com/Wealthify/backend/config/SecurityConfig.java) and [`application.properties`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/src/main/resources/application.properties):
+All health endpoints are hardened against information leakage in [`SecurityConfig.java`](../backend/src/main/java/com/Wealthify/backend/config/SecurityConfig.java) and [`application.properties`](../backend/src/main/resources/application.properties):
 
 1. **Sanitized Output**:
    ```properties
@@ -122,7 +122,7 @@ All health endpoints are hardened against information leakage in [`SecurityConfi
 
 ## Verification Evidence from Repository Tests
 
-All probe semantics, security configurations, and dynamic port behaviors are verified by automated integration tests in [`ActuatorSecurityIntegrationTest.java`](file:///c:/Users/Rishabh%20Srivastava/OneDrive/Desktop/Wealthify/backend/src/test/java/com/Wealthify/backend/config/ActuatorSecurityIntegrationTest.java):
+All probe semantics, security configurations, and dynamic port behaviors are verified by automated integration tests in [`ActuatorSecurityIntegrationTest.java`](../backend/src/test/java/com/Wealthify/backend/config/ActuatorSecurityIntegrationTest.java):
 
 - **Port Configuration**: Asserts `server.port` equals `${PORT:8080}` and resolves to `8080` when `PORT` is unset.
 - **Probe Accessibility**: Asserts `/actuator/health/readiness` and `/actuator/health/liveness` are reachable without authentication.
